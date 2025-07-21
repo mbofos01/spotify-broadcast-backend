@@ -51,12 +51,3 @@ with open(".cache", "w") as f:
     json.dump(token_info, f)
 
 print("Token saved to .cache")
-
-
-# https://accounts.spotify.com/authorize
-# ?client_id=e6c0bc9e8d524b36996178a943047f75
-# &response_type=code
-# &redirect_uri=https://www.example.com/callback
-# &scope=user-read-playback-state%20user-read-currently-playing
-
-# https://www.example.com/callback?code=AQB8egk4FnoeKMQDaqQwXpOdtmwLro0RAVZDn8-JLjX46BHgopiKOmcHb88F_r4n0WN7fh2tNAw1-lFdrQB6X8sNufy-wImqNME7wTWx0WsYu1mMFn8QtPo1McfqiY1RuMSjk9dHEtpTZqyUVjul0xEJkBRK5bAzK5_nUO4TAXYxxNfuWzmTsJ2NLXP2jv1jP2fKZqAq4DNYBGFdndl7NwykDqTxvY9pOdEdf3OqtIWIHg8wWIQdlzfxsA

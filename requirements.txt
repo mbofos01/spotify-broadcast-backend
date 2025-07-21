@@ -1,0 +1,5 @@
+flask
+flasgger
+flask-cors
+spotipy
+pydantic
