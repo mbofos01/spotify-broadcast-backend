@@ -12,7 +12,7 @@ from flask_cors import CORS
 
 # Set up Flask app
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:3000"])  # ← allow your React dev server
+CORS(app, origins=["http://localhost:3000","https://spotify-broadcast-frontend.vercel.app"])  # ← allow your React dev server
 
 
 # Initialize Swagger UI
@@ -27,6 +27,7 @@ SCOPE = 'user-read-playback-state'
 sp_oauth = SpotifyOAuth(client_id=CLIENT_ID,
                          client_secret=CLIENT_SECRET,
                          redirect_uri=REDIRECT_URI,
+                         cache_path="/home/wmpofos/mysite/.cache",
                          scope=SCOPE)
 
 # Route for the initial Spotify authorization request
@@ -68,6 +69,9 @@ class TrackVerboseInfo(BaseModel):
     progress_ms: int
     duration_ms: int
     is_playing: bool
+    track_id: str
+    spotify_url: str
+    spotify_uri: str
 
 # Function to get the current playback from Spotify
 def get_current_playback():
@@ -141,10 +145,13 @@ def currently_playing_verbose():
               example: true
     """
     results = get_current_playback()
-    print(f"_______________{results}______________")
-    print("AAAAAAAAAAAAAAAAAAAAABBBBBBBBBBBBBBBBBBBBBBBBB")
     if results and results.get("is_playing"):
         track = results["item"]
+        track_id = track["id"]
+        position_seconds = results["progress_ms"] // 1000
+
+        spotify_link = f"https://open.spotify.com/track/{track_id}?t={position_seconds}"
+        app_link = f"spotify:track:{track_id}"
 
         track_verbose_info = TrackVerboseInfo(
             artist=track["artists"][0]["name"],
@@ -153,11 +160,15 @@ def currently_playing_verbose():
             image_url=track["album"]["images"][0]["url"],
             progress_ms=results["progress_ms"],
             duration_ms=track["duration_ms"],
-            is_playing=results["is_playing"]
+            is_playing=results["is_playing"],
+            spotify_url=spotify_link,
+            spotify_uri=app_link,
+            track_id=track_id
+
         )
         return jsonify(track_verbose_info.dict())  # Convert Pydantic model to dict and jsonify
     return jsonify({"artist": "None", "track": "Nothing playing"})
 
-if __name__ == '__main__':
+# if __name__ == '__main__':
     # Run the Flask app on localhost
-    app.run(port=5000)
+    # app.run(port=5001)
