@@ -22,7 +22,7 @@ swagger = Swagger(app)
 CLIENT_ID = 'e6c0bc9e8d524b36996178a943047f75'
 CLIENT_SECRET = '32617db6fdca4062b1cc096b87a25d8f'
 REDIRECT_URI = 'https://www.example.com/callback'
-SCOPE = 'user-read-playback-state'
+SCOPE = ['user-read-playback-state', 'user-top-read', 'user-read-email', 'user-read-private']
 
 sp_oauth = SpotifyOAuth(client_id=CLIENT_ID,
                          client_secret=CLIENT_SECRET,
@@ -81,6 +81,22 @@ def get_current_playback():
         return None
     sp = Spotify(auth=token_info['access_token'])
     return sp.current_playback()
+  
+def get_user_data():
+    token_info = sp_oauth.get_cached_token()  # Assuming token is cached
+    if not token_info:
+        return None
+    sp = Spotify(auth=token_info['access_token'])
+    me = sp.me()
+    return jsonify(me)
+  
+def get_top_five():
+    token_info = sp_oauth.get_cached_token()  # Assuming token is cached
+    if not token_info:
+        return None
+    sp = Spotify(auth=token_info['access_token'])
+    top_tracks = sp.current_user_top_tracks(limit=5, time_range='short_term')
+    return top_tracks
 
 @app.route("/currently-playing", methods=["GET"])
 def currently_playing():
@@ -169,6 +185,60 @@ def currently_playing_verbose():
         return jsonify(track_verbose_info.dict())  # Convert Pydantic model to dict and jsonify
     return jsonify({"artist": "None", "track": "Nothing playing"})
 
+@app.route("/user-info", methods=["GET"])
+def get_user_info():
+  '''
+  This route fetches the current user's profile information.
+  ---
+  responses:
+    200:
+      description: Returns the current user's profile information.
+      schema:
+        id: UserInfo
+        properties:
+          display_name:
+            type: string
+            example: 'User Name'
+          email:
+            type: string
+  '''
+  me = get_user_data()
+  response = {}
+  response["display_name"] = me.json["display_name"]
+  response["uri"] = me.json["uri"]
+  response["image"] = me.json["images"][0]["url"] if me.json["images"] else None
+  response["height"] = me.json["images"][0]["height"] if me.json["images"] else None
+  response["width"] = me.json["images"][0]["width"] if me.json["images"] else None
+  response["followers"] = me.json["followers"]["total"] if me.json["followers"] else None
+  return response
+  
+  
+@app.route("/top-five", methods=["GET"])
+def top_five():
+  """
+  This route fetches the user's top five tracks.
+  ---
+  responses:
+    200 :
+      description: Returns the user's top five tracks.
+      schema:
+        id: TopFive
+        properties:
+          top_tracks:
+            type: array
+            items:
+              type: object
+              properties:
+                artist:
+                  type: string
+                  example: 'Artist Name'
+                track:
+                  type: string
+                  example: 'Track Name'
+    
+  """
+  top = get_top_five()
+  return top  
 # if __name__ == '__main__':
     # Run the Flask app on localhost
     # app.run(port=5001)
