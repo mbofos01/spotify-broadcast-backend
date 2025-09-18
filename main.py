@@ -156,7 +156,7 @@ def currently_playing_verbose():
     if not sp:
         return {"artist": "None", "track": "Nothing playing"}
     results = sp.current_playback()
-    if results and results.get("is_playing"):
+    if results and results.get("item") and results.get("is_playing"):
         track = results["item"]
         track_id = track["id"]
         position_seconds = results["progress_ms"] // 1000
