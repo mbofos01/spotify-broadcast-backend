@@ -7,6 +7,7 @@ from spotipy.oauth2 import SpotifyOAuth
 import os
 from dotenv import load_dotenv
 import json
+import redis
 
 # ---------------------
 # FastAPI Setup
@@ -39,6 +40,10 @@ load_dotenv()
 CLIENT_ID = os.environ.get("CLIENT_ID")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
 REDIRECT_URI = os.environ.get("REDIRECT_URI")
+REDIS_URL = os.environ.get("REDIS_URL")
+
+# Redis connection using URL
+r = redis.from_url(REDIS_URL, decode_responses=True)
 
 SCOPE = [
     "user-read-playback-state",
