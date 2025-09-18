@@ -210,4 +210,4 @@ def top_five():
     if not sp:
         return {"top_tracks": []}
     top_tracks = sp.current_user_top_tracks(limit=5, time_range="short_term")
-    return {"top_tracks": top_tracks}
+    return {"top_tracks": top_tracks['items']}
