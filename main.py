@@ -150,6 +150,7 @@ def currently_playing():
         return {"artist": track["artists"][0]["name"], "track": track["name"]}
     return {"artist": "None", "track": "Nothing playing"}
 
+
 @app.get("/currently-playing-verbose", response_model=TrackVerboseInfo)
 def currently_playing_verbose():
     sp = get_spotify_client()
@@ -172,7 +173,18 @@ def currently_playing_verbose():
             "spotify_uri": f"spotify:track:{track_id}",
             "track_id": track_id
         }
-    return {"artist": "None", "track": "Nothing playing"}
+    return {
+        "artist": "None",
+        "track": "Nothing playing",
+        "album": "",
+        "image_url": "",
+        "progress_ms": 0,
+        "duration_ms": 0,
+        "is_playing": False,
+        "track_id": "",
+        "spotify_url": "",
+        "spotify_uri": ""
+    }
 
 
 @app.get("/user-info", response_model=UserInfo)
