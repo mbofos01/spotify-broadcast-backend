@@ -210,8 +210,4 @@ def top_five():
     if not sp:
         return {"top_tracks": []}
     top_tracks = sp.current_user_top_tracks(limit=5, time_range="short_term")
-    simplified = []
-    for t in top_tracks["items"]:
-        simplified.append(
-            {"artist": t["artists"][0]["name"], "track": t["name"]})
-    return {"top_tracks": simplified}
+    return {"top_tracks": top_tracks}
