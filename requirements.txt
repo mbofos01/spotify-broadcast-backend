@@ -3,3 +3,4 @@ flasgger
 flask-cors
 spotipy
 pydantic
+fastapi
