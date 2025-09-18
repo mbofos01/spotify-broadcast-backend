@@ -145,11 +145,10 @@ def currently_playing():
     if not sp:
         return {"artist": "None", "track": "Nothing playing"}
     results = sp.current_playback()
-    if results and results.get("is_playing"):
+    if results and results.get("item") and results.get("is_playing"):
         track = results["item"]
         return {"artist": track["artists"][0]["name"], "track": track["name"]}
     return {"artist": "None", "track": "Nothing playing"}
-
 
 @app.get("/currently-playing-verbose", response_model=TrackVerboseInfo)
 def currently_playing_verbose():
