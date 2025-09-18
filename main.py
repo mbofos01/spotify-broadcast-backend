@@ -1,8 +1,12 @@
+from fastapi import Request
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from spotipy import Spotify
 from spotipy.oauth2 import SpotifyOAuth
+import os
+from dotenv import load_dotenv
+import json
 
 # ---------------------
 # FastAPI Setup
@@ -31,9 +35,11 @@ app.add_middleware(
 # ---------------------
 # Spotify OAuth Setup
 # ---------------------
-CLIENT_ID = "e6c0bc9e8d524b36996178a943047f75"
-CLIENT_SECRET = "32617db6fdca4062b1cc096b87a25d8f"
-REDIRECT_URI = "https://www.example.com/callback"
+load_dotenv()
+CLIENT_ID = os.environ.get("CLIENT_ID")
+CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
+REDIRECT_URI = os.environ.get("REDIRECT_URI")
+
 SCOPE = [
     "user-read-playback-state",
     "user-top-read",
@@ -52,9 +58,12 @@ sp_oauth = SpotifyOAuth(
 # ---------------------
 # Pydantic Models
 # ---------------------
+
+
 class TrackInfo(BaseModel):
     artist: str
     track: str
+
 
 class TrackVerboseInfo(BaseModel):
     artist: str
@@ -68,6 +77,7 @@ class TrackVerboseInfo(BaseModel):
     spotify_url: str
     spotify_uri: str
 
+
 class UserInfo(BaseModel):
     display_name: str
     uri: str
@@ -79,19 +89,37 @@ class UserInfo(BaseModel):
 # ---------------------
 # Helper Functions
 # ---------------------
+
+
+def save_token(token_info: dict):
+    r.set("spotify_token", json.dumps(token_info))
+
+
+def load_token():
+    token = r.get("spotify_token")
+    return json.loads(token) if token else None
+
+
 def get_spotify_client():
-    token_info = sp_oauth.get_cached_token()
+    token_info = load_token()
     if not token_info:
         return None
+    # Refresh token if expired
+    if sp_oauth.is_token_expired(token_info):
+        token_info = sp_oauth.refresh_access_token(token_info["refresh_token"])
+        save_token(token_info)
     return Spotify(auth=token_info["access_token"])
 
 # ---------------------
 # Routes
 # ---------------------
+
+
 @app.get("/")
 def index():
     """Get Spotify authorization URL"""
     return {"auth_url": sp_oauth.get_authorize_url()}
+
 
 @app.get("/currently-playing", response_model=TrackInfo)
 def currently_playing():
@@ -104,6 +132,7 @@ def currently_playing():
         track = results["item"]
         return {"artist": track["artists"][0]["name"], "track": track["name"]}
     return {"artist": "None", "track": "Nothing playing"}
+
 
 @app.get("/currently-playing-verbose", response_model=TrackVerboseInfo)
 def currently_playing_verbose():
@@ -130,6 +159,7 @@ def currently_playing_verbose():
         }
     return {"artist": "None", "track": "Nothing playing"}
 
+
 @app.get("/user-info", response_model=UserInfo)
 def get_user_info():
     """Get user profile info"""
@@ -147,6 +177,7 @@ def get_user_info():
         "followers": me["followers"]["total"] if me.get("followers") else None,
     }
 
+
 @app.get("/top-five")
 def top_five():
     """Get top 5 tracks"""
@@ -161,3 +192,14 @@ def top_five():
             "track": t["name"]
         })
     return {"top_tracks": simplified}
+
+
+@app.get("/callback")
+def callback(request: Request):
+    code = request.query_params.get("code")
+    if not code:
+        return {"error": "Missing code"}
+
+    token_info = sp_oauth.get_access_token(code, as_dict=True)
+    save_token(token_info)
+    return {"message": "Login successful. Token saved."}

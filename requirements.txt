@@ -1,6 +1,4 @@
-flask
-flasgger
-flask-cors
 spotipy
 pydantic
+redis
 fastapi
