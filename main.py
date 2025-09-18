@@ -1,11 +1,10 @@
-from fastapi import Request
-from fastapi import FastAPI
+# main.py
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from spotipy import Spotify
 from spotipy.oauth2 import SpotifyOAuth
 import os
-from dotenv import load_dotenv
 import json
 import redis
 
@@ -14,17 +13,16 @@ import redis
 # ---------------------
 app = FastAPI(
     title="Spotify Broadcast Backend",
-    description="Backend service for Spotify data with FastAPI",
     version="1.0.0",
-    docs_url="/swagger",   # Swagger UI at /swagger
-    redoc_url="/redoc"     # ReDoc at /redoc
+    docs_url="/swagger",
+    redoc_url="/redoc"
 )
 
-# CORS setup
 origins = [
     "http://localhost:3000",
     "https://spotify-broadcast-frontend.vercel.app"
 ]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -34,16 +32,17 @@ app.add_middleware(
 )
 
 # ---------------------
+# Redis Setup
+# ---------------------
+REDIS_URL = os.environ.get("REDIS_URL")
+r = redis.from_url(REDIS_URL, decode_responses=True)
+
+# ---------------------
 # Spotify OAuth Setup
 # ---------------------
-load_dotenv()
 CLIENT_ID = os.environ.get("CLIENT_ID")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
 REDIRECT_URI = os.environ.get("REDIRECT_URI")
-REDIS_URL = os.environ.get("REDIS_URL")
-
-# Redis connection using URL
-r = redis.from_url(REDIS_URL, decode_responses=True)
 
 SCOPE = [
     "user-read-playback-state",
@@ -56,19 +55,15 @@ sp_oauth = SpotifyOAuth(
     client_id=CLIENT_ID,
     client_secret=CLIENT_SECRET,
     redirect_uri=REDIRECT_URI,
-    cache_path=".cache",
     scope=SCOPE
 )
 
 # ---------------------
 # Pydantic Models
 # ---------------------
-
-
 class TrackInfo(BaseModel):
     artist: str
     track: str
-
 
 class TrackVerboseInfo(BaseModel):
     artist: str
@@ -82,7 +77,6 @@ class TrackVerboseInfo(BaseModel):
     spotify_url: str
     spotify_uri: str
 
-
 class UserInfo(BaseModel):
     display_name: str
     uri: str
@@ -94,22 +88,17 @@ class UserInfo(BaseModel):
 # ---------------------
 # Helper Functions
 # ---------------------
-
-
 def save_token(token_info: dict):
     r.set("spotify_token", json.dumps(token_info))
-
 
 def load_token():
     token = r.get("spotify_token")
     return json.loads(token) if token else None
 
-
 def get_spotify_client():
     token_info = load_token()
     if not token_info:
         return None
-    # Refresh token if expired
     if sp_oauth.is_token_expired(token_info):
         token_info = sp_oauth.refresh_access_token(token_info["refresh_token"])
         save_token(token_info)
@@ -118,17 +107,23 @@ def get_spotify_client():
 # ---------------------
 # Routes
 # ---------------------
-
-
 @app.get("/")
 def index():
     """Get Spotify authorization URL"""
     return {"auth_url": sp_oauth.get_authorize_url()}
 
+@app.get("/callback")
+def callback(request: Request):
+    """Spotify OAuth callback"""
+    code = request.query_params.get("code")
+    if not code:
+        return {"error": "Missing code"}
+    token_info = sp_oauth.get_access_token(code, as_dict=True)
+    save_token(token_info)
+    return {"message": "Login successful. Token saved."}
 
 @app.get("/currently-playing", response_model=TrackInfo)
 def currently_playing():
-    """Get current track (basic info)"""
     sp = get_spotify_client()
     if not sp:
         return {"artist": "None", "track": "Nothing playing"}
@@ -138,10 +133,8 @@ def currently_playing():
         return {"artist": track["artists"][0]["name"], "track": track["name"]}
     return {"artist": "None", "track": "Nothing playing"}
 
-
 @app.get("/currently-playing-verbose", response_model=TrackVerboseInfo)
 def currently_playing_verbose():
-    """Get detailed track info"""
     sp = get_spotify_client()
     if not sp:
         return {"artist": "None", "track": "Nothing playing"}
@@ -164,10 +157,8 @@ def currently_playing_verbose():
         }
     return {"artist": "None", "track": "Nothing playing"}
 
-
 @app.get("/user-info", response_model=UserInfo)
 def get_user_info():
-    """Get user profile info"""
     sp = get_spotify_client()
     if not sp:
         return {"display_name": "Unknown", "uri": "", "image": None,
@@ -182,29 +173,13 @@ def get_user_info():
         "followers": me["followers"]["total"] if me.get("followers") else None,
     }
 
-
 @app.get("/top-five")
 def top_five():
-    """Get top 5 tracks"""
     sp = get_spotify_client()
     if not sp:
         return {"top_tracks": []}
     top_tracks = sp.current_user_top_tracks(limit=5, time_range="short_term")
     simplified = []
     for t in top_tracks["items"]:
-        simplified.append({
-            "artist": t["artists"][0]["name"],
-            "track": t["name"]
-        })
+        simplified.append({"artist": t["artists"][0]["name"], "track": t["name"]})
     return {"top_tracks": simplified}
-
-
-@app.get("/callback")
-def callback(request: Request):
-    code = request.query_params.get("code")
-    if not code:
-        return {"error": "Missing code"}
-
-    token_info = sp_oauth.get_access_token(code, as_dict=True)
-    save_token(token_info)
-    return {"message": "Login successful. Token saved."}
