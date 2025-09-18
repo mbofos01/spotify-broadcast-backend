@@ -1,4 +1,5 @@
 # main.py
+from fastapi.responses import RedirectResponse
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -61,9 +62,12 @@ sp_oauth = SpotifyOAuth(
 # ---------------------
 # Pydantic Models
 # ---------------------
+
+
 class TrackInfo(BaseModel):
     artist: str
     track: str
+
 
 class TrackVerboseInfo(BaseModel):
     artist: str
@@ -77,6 +81,7 @@ class TrackVerboseInfo(BaseModel):
     spotify_url: str
     spotify_uri: str
 
+
 class UserInfo(BaseModel):
     display_name: str
     uri: str
@@ -88,12 +93,16 @@ class UserInfo(BaseModel):
 # ---------------------
 # Helper Functions
 # ---------------------
+
+
 def save_token(token_info: dict):
     r.set("spotify_token", json.dumps(token_info))
+
 
 def load_token():
     token = r.get("spotify_token")
     return json.loads(token) if token else None
+
 
 def get_spotify_client():
     token_info = load_token()
@@ -104,23 +113,31 @@ def get_spotify_client():
         save_token(token_info)
     return Spotify(auth=token_info["access_token"])
 
+
 # ---------------------
 # Routes
 # ---------------------
+
+
 @app.get("/")
 def index():
-    """Get Spotify authorization URL"""
-    return {"auth_url": sp_oauth.get_authorize_url()}
+    """Redirect user to Spotify login"""
+    auth_url = sp_oauth.get_authorize_url()
+    return RedirectResponse(auth_url)
+
 
 @app.get("/callback")
 def callback(request: Request):
-    """Spotify OAuth callback"""
     code = request.query_params.get("code")
     if not code:
         return {"error": "Missing code"}
+
     token_info = sp_oauth.get_access_token(code, as_dict=True)
     save_token(token_info)
-    return {"message": "Login successful. Token saved."}
+
+    # After saving token, redirect to Swagger
+    return RedirectResponse("/swagger")
+
 
 @app.get("/currently-playing", response_model=TrackInfo)
 def currently_playing():
@@ -132,6 +149,7 @@ def currently_playing():
         track = results["item"]
         return {"artist": track["artists"][0]["name"], "track": track["name"]}
     return {"artist": "None", "track": "Nothing playing"}
+
 
 @app.get("/currently-playing-verbose", response_model=TrackVerboseInfo)
 def currently_playing_verbose():
@@ -157,6 +175,7 @@ def currently_playing_verbose():
         }
     return {"artist": "None", "track": "Nothing playing"}
 
+
 @app.get("/user-info", response_model=UserInfo)
 def get_user_info():
     sp = get_spotify_client()
@@ -173,6 +192,7 @@ def get_user_info():
         "followers": me["followers"]["total"] if me.get("followers") else None,
     }
 
+
 @app.get("/top-five")
 def top_five():
     sp = get_spotify_client()
@@ -181,5 +201,6 @@ def top_five():
     top_tracks = sp.current_user_top_tracks(limit=5, time_range="short_term")
     simplified = []
     for t in top_tracks["items"]:
-        simplified.append({"artist": t["artists"][0]["name"], "track": t["name"]})
+        simplified.append(
+            {"artist": t["artists"][0]["name"], "track": t["name"]})
     return {"top_tracks": simplified}
