@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from fastapi import HTTPException
 from spotipy import Spotify
 from spotipy.oauth2 import SpotifyOAuth
 import os
@@ -90,6 +91,10 @@ class UserInfo(BaseModel):
     width: int | None
     followers: int | None
 
+
+class ErrorResponse(BaseModel):
+    detail: str
+
 # ---------------------
 # Helper Functions
 # ---------------------
@@ -119,44 +124,113 @@ def get_spotify_client():
 # ---------------------
 
 
-@app.get("/")
+@app.get(
+    "/",
+    summary="Start Spotify OAuth",
+    description="Redirects the client to Spotify's authorization page to start the OAuth flow.",
+    responses={
+        302: {"description": "Redirect to Spotify authorization URL"},
+        500: {"model": ErrorResponse, "description": "Failed to generate authorization URL"},
+    },
+    tags=["auth"],
+)
 def index():
     """Redirect user to Spotify login"""
-    auth_url = sp_oauth.get_authorize_url()
+    try:
+        auth_url = sp_oauth.get_authorize_url()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create auth URL: {e}")
     return RedirectResponse(auth_url)
 
 
-@app.get("/callback")
+@app.get(
+    "/callback",
+    summary="OAuth callback",
+    description=(
+        "Callback endpoint used by Spotify after user authorizes the app. "
+        "Exchanges the provided `code` query parameter for an access/refresh token and stores it in Redis."
+    ),
+    responses={
+        302: {"description": "Redirect to Swagger UI on success"},
+        400: {"model": ErrorResponse, "description": "Missing or invalid code"},
+        502: {"model": ErrorResponse, "description": "Token exchange failed"},
+    },
+    tags=["auth"],
+)
 def callback(request: Request):
+    """Handle the OAuth callback from Spotify and store tokens."""
     code = request.query_params.get("code")
     if not code:
-        return {"error": "Missing code"}
+        raise HTTPException(status_code=400, detail="Missing code")
 
-    token_info = sp_oauth.get_access_token(code, as_dict=True)
+    try:
+        token_info = sp_oauth.get_access_token(code, as_dict=True)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to exchange code for token: {e}")
+
     save_token(token_info)
 
     # After saving token, redirect to Swagger
     return RedirectResponse("/swagger")
 
 
-@app.get("/currently-playing", response_model=TrackInfo)
+@app.get(
+    "/currently-playing",
+    response_model=TrackInfo,
+    summary="Simple currently playing track",
+    description=(
+        "Returns the currently playing track as a small object with `artist` and `track` fields. "
+        "Requires a valid Spotify access token previously stored via the OAuth flow."
+    ),
+    responses={
+        200: {"description": "OK - track data", "model": TrackInfo},
+        204: {"description": "No Content - nothing is playing"},
+        401: {"model": ErrorResponse, "description": "Unauthorized - no token"},
+        502: {"model": ErrorResponse, "description": "Upstream Spotify error"},
+    },
+    tags=["playback"],
+)
 def currently_playing():
+    """Return a minimal representation of the currently playing track."""
     sp = get_spotify_client()
     if not sp:
-        return {"artist": "None", "track": "Nothing playing"}
-    results = sp.current_playback()
+        raise HTTPException(status_code=401, detail="Spotify token not found")
+    try:
+        results = sp.current_playback()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
     if results and results.get("item") and results.get("is_playing"):
         track = results["item"]
         return {"artist": track["artists"][0]["name"], "track": track["name"]}
-    return {"artist": "None", "track": "Nothing playing"}
+    # Nothing playing
+    return RedirectResponse(status_code=204, url="/currently-playing")
 
 
-@app.get("/currently-playing-verbose", response_model=TrackVerboseInfo)
+@app.get(
+    "/currently-playing-verbose",
+    response_model=TrackVerboseInfo,
+    summary="Verbose currently playing track",
+    description=(
+        "Returns detailed information about the currently playing track including album, image URL, "
+        "progress and duration in milliseconds, playback state, and Spotify URLs."
+    ),
+    responses={
+        200: {"description": "OK - verbose track data", "model": TrackVerboseInfo},
+        204: {"description": "No Content - nothing is playing"},
+        401: {"model": ErrorResponse, "description": "Unauthorized - no token"},
+        502: {"model": ErrorResponse, "description": "Upstream Spotify error"},
+    },
+    tags=["playback"],
+)
 def currently_playing_verbose():
+    """Return a detailed representation of the currently playing track."""
     sp = get_spotify_client()
     if not sp:
-        return {"artist": "None", "track": "Nothing playing"}
-    results = sp.current_playback()
+        raise HTTPException(status_code=401, detail="Spotify token not found")
+    try:
+        results = sp.current_playback()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
     if results and results.get("item") and results.get("is_playing"):
         track = results["item"]
         track_id = track["id"]
@@ -173,27 +247,34 @@ def currently_playing_verbose():
             "spotify_uri": f"spotify:track:{track_id}",
             "track_id": track_id
         }
-    return {
-        "artist": "None",
-        "track": "Nothing playing",
-        "album": "",
-        "image_url": "",
-        "progress_ms": 0,
-        "duration_ms": 0,
-        "is_playing": False,
-        "track_id": "",
-        "spotify_url": "",
-        "spotify_uri": ""
-    }
+    # Nothing playing
+    return RedirectResponse(status_code=204, url="/currently-playing-verbose")
 
 
-@app.get("/user-info", response_model=UserInfo)
+@app.get(
+    "/user-info",
+    response_model=UserInfo,
+    summary="Get current user profile",
+    description=(
+        "Fetches the current Spotify user's profile information including display name, profile URI, "
+        "profile image and follower count. Requires a valid Spotify access token."
+    ),
+    responses={
+        200: {"description": "OK - user profile", "model": UserInfo},
+        401: {"model": ErrorResponse, "description": "Unauthorized - no token"},
+        502: {"model": ErrorResponse, "description": "Upstream Spotify error"},
+    },
+    tags=["user"],
+)
 def get_user_info():
+    """Return Spotify profile information for the authenticated user."""
     sp = get_spotify_client()
     if not sp:
-        return {"display_name": "Unknown", "uri": "", "image": None,
-                "height": None, "width": None, "followers": None}
-    me = sp.me()
+        raise HTTPException(status_code=401, detail="Spotify token not found")
+    try:
+        me = sp.me()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
     return {
         "display_name": me["display_name"],
         "uri": me["uri"],
@@ -204,10 +285,27 @@ def get_user_info():
     }
 
 
-@app.get("/top-five")
+@app.get(
+    "/top-five",
+    summary="Get top 5 tracks",
+    description=(
+        "Returns the authenticated user's top 5 tracks for the short-term time range. "
+        "The endpoint uses Spotify's `current_user_top_tracks` with `limit=5` and `time_range='short_term'`."
+    ),
+    responses={
+        200: {"description": "OK - list of top tracks"},
+        401: {"model": ErrorResponse, "description": "Unauthorized - no token"},
+        502: {"model": ErrorResponse, "description": "Upstream Spotify error"},
+    },
+    tags=["user"],
+)
 def top_five():
+    """Return the user's top five tracks in the short-term time range."""
     sp = get_spotify_client()
     if not sp:
-        return {"top_tracks": []}
-    top_tracks = sp.current_user_top_tracks(limit=5, time_range="short_term")
+        raise HTTPException(status_code=401, detail="Spotify token not found")
+    try:
+        top_tracks = sp.current_user_top_tracks(limit=5, time_range="short_term")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
     return {"top_tracks": top_tracks['items']}
