@@ -19,7 +19,7 @@ def lighten_color(rgb, factor=0.4):
     b = int(b + (255 - b) * factor)
     return (r, g, b)
 
-def get_suggested_gradient(image_url, min_brightness=0.5):
+def get_suggested_gradient(image_url, min_brightness=0.3):
     # Load album art
     response = requests.get(image_url)
     img = Image.open(BytesIO(response.content)).convert("RGB")
