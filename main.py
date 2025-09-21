@@ -9,7 +9,6 @@ from spotipy.oauth2 import SpotifyOAuth
 import os
 import json
 import redis
-from tools import get_suggested_gradient
 
 # ---------------------
 # FastAPI Setup
@@ -82,9 +81,6 @@ class TrackVerboseInfo(BaseModel):
     track_id: str
     spotify_url: str
     spotify_uri: str
-    color_one: str
-    color_two: str
-
 
 class UserInfo(BaseModel):
     display_name: str
@@ -238,7 +234,6 @@ def currently_playing_verbose():
         track = results["item"]
         track_id = track["id"]
         position_seconds = results["progress_ms"] // 1000
-        color_one , color_two = get_suggested_gradient(track["album"]["images"][0]["url"])
         return {
             "artist": track["artists"][0]["name"],
             "track": track["name"],
@@ -250,8 +245,6 @@ def currently_playing_verbose():
             "spotify_url": f"https://open.spotify.com/track/{track_id}?t={position_seconds}",
             "spotify_uri": f"spotify:track:{track_id}",
             "track_id": track_id,
-            "color_one": color_one,
-            "color_two": color_two
         }
     # Nothing playing
     return RedirectResponse(status_code=204, url="/currently-playing-verbose")
