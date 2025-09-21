@@ -2,3 +2,4 @@ spotipy
 pydantic
 redis
 fastapi
+pillow
