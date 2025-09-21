@@ -22,7 +22,7 @@ def get_suggested_gradient(image_url, min_brightness=0.25, max_brightness=0.9, b
     # Load album art
     response = requests.get(image_url)
     img = Image.open(BytesIO(response.content)).convert("RGB")
-    small_img = img.resize((100, 100))
+    small_img = img.resize((640, 640))
     pixels = np.array(small_img).reshape(-1, 3)
     
     # Most common colors
