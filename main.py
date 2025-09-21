@@ -82,6 +82,8 @@ class TrackVerboseInfo(BaseModel):
     track_id: str
     spotify_url: str
     spotify_uri: str
+    color_one: str
+    color_two: str
 
 
 class UserInfo(BaseModel):
