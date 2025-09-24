@@ -26,6 +26,7 @@ Create a copy of `.env.example` named `.env` and fill in your Spotify app creden
 CLIENT_ID=your_spotify_client_id
 CLIENT_SECRET=your_spotify_client_secret
 REDIRECT_URI=http://localhost:8000/callback
+FRONT_END_SERVER=http://localhost:3000
 REDIS_URL=redis://localhost:6379/0
 ```
 

@@ -22,7 +22,7 @@ app = FastAPI(
 
 origins = [
     "http://localhost:3000",
-    "https://spotify-broadcast-frontend.vercel.app"
+    os.environ.get("FRONT_END_SERVER")
 ]
 
 app.add_middleware(
@@ -277,7 +277,7 @@ def get_user_info():
     return {
         "display_name": me["display_name"],
         "uri": me["uri"],
-        "image": me["images"][0]["url"] if me.get("images") else None,
+        "image": me["images"][0]["url"] if me.get("images") else "https://i.scdn.co/image/ab67616100005174f1b7d5bb5d46191501fbd804",
         "height": me["images"][0]["height"] if me.get("images") else None,
         "width": me["images"][0]["width"] if me.get("images") else None,
         "followers": me["followers"]["total"] if me.get("followers") else None,
