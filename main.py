@@ -94,6 +94,14 @@ class UserInfo(BaseModel):
 class ErrorResponse(BaseModel):
     detail: str
 
+
+class ArtistInfo(BaseModel):
+    id: str
+    name: str
+    uri: str
+    spotify_url: str
+    image_url: str | None
+
 # ---------------------
 # Helper Functions
 # ---------------------
@@ -312,10 +320,11 @@ def top_five():
 
 @app.get(
     "/top-five-artists",
+    response_model=list[ArtistInfo],
     summary="Get top 5 artists",
     description=(
         "Returns the authenticated user's top 5 artists for the short-term time range. "
-        "The endpoint uses Spotify's `current_user_top_artists` with `limit=5` and `time_range='short_term'`."
+        "Uses Spotify's `current_user_top_artists` with `limit=5` and `time_range='short_term'`."
     ),
     responses={
         200: {"description": "OK - list of top artists"},
@@ -333,4 +342,18 @@ def top_five_artists():
         top_artists = sp.current_user_top_artists(limit=5, time_range="short_term")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
-    return {"top_artists": top_artists['items']}
+
+    # Map Spotify artist objects to our ArtistInfo model
+    items = []
+    for a in top_artists.get("items", []):
+        items.append(
+            {
+                "id": a.get("id"),
+                "name": a.get("name"),
+                "uri": a.get("uri"),
+                "spotify_url": a.get("external_urls", {}).get("spotify"),
+                "image_url": a.get("images", [{}])[0].get("url") if a.get("images") else None,
+            }
+        )
+    return items
+
