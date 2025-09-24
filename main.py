@@ -101,6 +101,7 @@ class ArtistInfo(BaseModel):
     uri: str
     spotify_url: str
     image_url: str | None
+    followers: int
 
 # ---------------------
 # Helper Functions
@@ -353,6 +354,7 @@ def top_five_artists():
                 "uri": a.get("uri"),
                 "spotify_url": a.get("external_urls", {}).get("spotify"),
                 "image_url": a.get("images", [{}])[0].get("url") if a.get("images") else None,
+                "followers": a.get("followers", {}).get("total", 0),
             }
         )
     return items
