@@ -308,3 +308,29 @@ def top_five():
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
     return {"top_tracks": top_tracks['items']}
+
+
+@app.get(
+    "/top-five-artists",
+    summary="Get top 5 artists",
+    description=(
+        "Returns the authenticated user's top 5 artists for the short-term time range. "
+        "The endpoint uses Spotify's `current_user_top_artists` with `limit=5` and `time_range='short_term'`."
+    ),
+    responses={
+        200: {"description": "OK - list of top artists"},
+        401: {"model": ErrorResponse, "description": "Unauthorized - no token"},
+        502: {"model": ErrorResponse, "description": "Upstream Spotify error"},
+    },
+    tags=["user"],
+)
+def top_five_artists():
+    """Return the user's top five artists in the short-term time range."""
+    sp = get_spotify_client()
+    if not sp:
+        raise HTTPException(status_code=401, detail="Spotify token not found")
+    try:
+        top_artists = sp.current_user_top_artists(limit=5, time_range="short_term")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
+    return {"top_artists": top_artists['items']}
