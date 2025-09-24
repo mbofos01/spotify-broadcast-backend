@@ -66,12 +66,12 @@ sp_oauth = SpotifyOAuth(
 
 
 class TrackInfo(BaseModel):
-    artist: str
+    artists: list[str]
     track: str
 
 
 class TrackVerboseInfo(BaseModel):
-    artist: str
+    artists: list[str]
     track: str
     album: str
     image_url: str
@@ -209,7 +209,7 @@ def currently_playing():
         raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
     if results and results.get("item") and results.get("is_playing"):
         track = results["item"]
-        return {"artist": track["artists"][0]["name"], "track": track["name"]}
+        return {"artists": [artist["name"] for artist in track["artists"]], "track": track["name"]}
     # Nothing playing
     return RedirectResponse(status_code=204, url="/currently-playing")
 
@@ -244,7 +244,7 @@ def currently_playing_verbose():
         track_id = track["id"]
         position_seconds = results["progress_ms"] // 1000
         return {
-            "artist": track["artists"][0]["name"],
+            "artists": [artist["name"] for artist in track["artists"]],
             "track": track["name"],
             "album": track["album"]["name"],
             "image_url": track["album"]["images"][0]["url"],
