@@ -48,6 +48,7 @@ REDIRECT_URI = os.environ.get("REDIRECT_URI")
 
 SCOPE = [
     "user-read-playback-state",
+    "user-read-recently-played",
     "user-top-read",
     "user-read-email",
     "user-read-private"
@@ -102,6 +103,15 @@ class ArtistInfo(BaseModel):
     spotify_url: str
     image_url: str | None
     followers: int
+
+class RecentlyPlayedTrack(BaseModel):
+    id: str
+    name: str
+    artists: list[str]
+    album: str
+    image_url: str | None
+    spotify_url: str
+    played_at: str
 
 # ---------------------
 # Helper Functions
@@ -359,3 +369,49 @@ def top_five_artists():
         )
     return items
 
+
+@app.get(
+    "/recently-played",
+    response_model=list[RecentlyPlayedTrack],
+    summary="Get recently played tracks",
+    description=(
+        "Returns the authenticated user's recently played tracks. "
+        "Uses Spotify's `current_user_recently_played` with a default `limit=5` (max 50)."
+    ),
+    responses={
+        200: {"description": "OK - list of recently played tracks", "model": list[RecentlyPlayedTrack]},
+        401: {"model": ErrorResponse, "description": "Unauthorized - no token"},
+        502: {"model": ErrorResponse, "description": "Upstream Spotify error"},
+    },
+    tags=["user"],
+)
+def recently_played(limit: int = 5):
+    """Return the user's recently played tracks."""
+    if limit > 50:
+        limit = 50  # Spotify max
+
+    sp = get_spotify_client()
+    if not sp:
+        raise HTTPException(status_code=401, detail="Spotify token not found")
+
+    try:
+        results = sp.current_user_recently_played(limit=limit)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
+
+    items = []
+    for item in results.get("items", []):
+        track = item["track"]
+        items.append(
+            RecentlyPlayedTrack(
+                id=track["id"],
+                name=track["name"],
+                artists=[artist["name"] for artist in track["artists"]],
+                album=track["album"]["name"],
+                image_url=track["album"]["images"][0]["url"] if track["album"]["images"] else None,
+                spotify_url=track["external_urls"]["spotify"],
+                played_at=item.get("played_at"),
+            )
+        )
+
+    return items
