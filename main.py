@@ -217,6 +217,11 @@ def currently_playing():
         results = sp.current_playback()
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
+
+    is_private = results.get("device", {}).get("is_private_session", False)
+    if is_private:
+        return RedirectResponse(status_code=204, url="/currently-playing-verbose")
+    
     if results and results.get("item") and results.get("is_playing"):
         track = results["item"]
         return {"artists": [artist["name"] for artist in track["artists"]], "track": track["name"]}
@@ -249,6 +254,11 @@ def currently_playing_verbose():
         results = sp.current_playback()
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
+
+    is_private = results.get("device", {}).get("is_private_session", False)
+    if is_private:
+        return RedirectResponse(status_code=204, url="/currently-playing-verbose")
+    
     if results and results.get("item") and results.get("is_playing"):
         track = results["item"]
         track_id = track["id"]
