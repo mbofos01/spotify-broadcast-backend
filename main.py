@@ -255,9 +255,13 @@ def currently_playing_verbose():
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
 
-    is_private = results.get("device", {}).get("is_private_session", False)
+    is_private = (
+        results.get("device", {}).get("is_private_session") or
+        results.get("is_private_session") or
+        False
+    )
     if is_private:
-        return RedirectResponse(status_code=204, url="/currently-playing-verbose")
+        return RedirectResponse(status_code=204)
     
     if results and results.get("item") and results.get("is_playing"):
         track = results["item"]
