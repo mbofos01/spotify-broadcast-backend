@@ -28,6 +28,17 @@ CLIENT_SECRET=your_spotify_client_secret
 REDIRECT_URI=http://localhost:8000/callback
 FRONT_END_SERVER=http://localhost:3000
 REDIS_URL=redis://localhost:6379/0
+ENCRYPTION_KEY=your_encryption_key
+```
+
+### How to get an encryption key:
+
+```python
+from cryptography.fernet import Fernet
+
+# Generate a new key
+key = Fernet.generate_key()
+print(key.decode())
 ```
 
 Notes:

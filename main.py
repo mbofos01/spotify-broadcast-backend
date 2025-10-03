@@ -1,4 +1,5 @@
 # main.py
+from cryptography.fernet import Fernet
 import base64
 import requests
 from fastapi.responses import RedirectResponse
@@ -122,31 +123,42 @@ class RecentlyPlayedTrack(BaseModel):
 # ---------------------
 
 
+# Setup encryption
+ENCRYPTION_KEY = os.environ.get(
+    "ENCRYPTION_KEY").encode()  # store safely in env
+fernet = Fernet(ENCRYPTION_KEY)
+
+
 def save_token(token_info: dict):
-    """Save access token with TTL and refresh token separately."""
+    """Save access token with TTL and refresh token separately, encrypted."""
     access_token = token_info.get("access_token")
     refresh_token = token_info.get("refresh_token")
     expires_in = token_info.get("expires_in", 3600)
 
     if access_token:
-        r.set("spotify_access_token", access_token, ex=expires_in)
+        encrypted_access = fernet.encrypt(access_token.encode()).decode()
+        r.set("spotify_access_token", encrypted_access, ex=expires_in)
+
     if refresh_token:
-        r.set("spotify_refresh_token", refresh_token)
+        encrypted_refresh = fernet.encrypt(refresh_token.encode()).decode()
+        r.set("spotify_refresh_token", encrypted_refresh)
 
 
 def refresh_access_token():
-    """Refresh the Spotify access token safely with Redis lock."""
-    refresh_token = r.get("spotify_refresh_token")
-    if not refresh_token:
+    """Refresh the Spotify access token safely with Redis lock, decrypting the refresh token."""
+    encrypted_refresh = r.get("spotify_refresh_token")
+    if not encrypted_refresh:
         raise RuntimeError("No refresh token available in Redis")
 
-    # Acquire a Redis lock to prevent multiple refreshes
+    refresh_token = fernet.decrypt(encrypted_refresh.encode()).decode()
+
     with r.lock("spotify_refresh_lock", timeout=30, blocking_timeout=5):
         # Double-check in case another process refreshed while waiting
-        access_token = r.get("spotify_access_token")
-        if access_token:
-            return access_token
+        encrypted_access = r.get("spotify_access_token")
+        if encrypted_access:
+            return fernet.decrypt(encrypted_access.encode()).decode()
 
+        # Request new access token from Spotify
         auth_header = base64.b64encode(
             f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode()
         response = requests.post(
@@ -167,9 +179,9 @@ def refresh_access_token():
 
 def get_valid_token():
     """Return a valid Spotify access token, refreshing if expired."""
-    access_token = r.get("spotify_access_token")
-    if access_token:
-        return access_token
+    encrypted_access = r.get("spotify_access_token")
+    if encrypted_access:
+        return fernet.decrypt(encrypted_access.encode()).decode()
     return refresh_access_token()
 
 
@@ -179,7 +191,6 @@ def get_spotify_client():
     if not token:
         return None
     return Spotify(auth=token)
-
 # ---------------------
 # Routes
 # ---------------------
