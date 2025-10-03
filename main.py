@@ -1,4 +1,6 @@
 # main.py
+import base64
+import requests
 from fastapi.responses import RedirectResponse
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -83,6 +85,7 @@ class TrackVerboseInfo(BaseModel):
     spotify_url: str
     spotify_uri: str
 
+
 class UserInfo(BaseModel):
     display_name: str
     uri: str
@@ -104,6 +107,7 @@ class ArtistInfo(BaseModel):
     image_url: str | None
     followers: int
 
+
 class RecentlyPlayedTrack(BaseModel):
     id: str
     name: str
@@ -119,23 +123,62 @@ class RecentlyPlayedTrack(BaseModel):
 
 
 def save_token(token_info: dict):
-    r.set("spotify_token", json.dumps(token_info))
+    """Save access token with TTL and refresh token separately."""
+    access_token = token_info.get("access_token")
+    refresh_token = token_info.get("refresh_token")
+    expires_in = token_info.get("expires_in", 3600)
+
+    if access_token:
+        r.set("spotify_access_token", access_token, ex=expires_in)
+    if refresh_token:
+        r.set("spotify_refresh_token", refresh_token)
 
 
-def load_token():
-    token = r.get("spotify_token")
-    return json.loads(token) if token else None
+def refresh_access_token():
+    """Refresh the Spotify access token safely with Redis lock."""
+    refresh_token = r.get("spotify_refresh_token")
+    if not refresh_token:
+        raise RuntimeError("No refresh token available in Redis")
+
+    # Acquire a Redis lock to prevent multiple refreshes
+    with r.lock("spotify_refresh_lock", timeout=30, blocking_timeout=5):
+        # Double-check in case another process refreshed while waiting
+        access_token = r.get("spotify_access_token")
+        if access_token:
+            return access_token
+
+        auth_header = base64.b64encode(
+            f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode()
+        response = requests.post(
+            "https://accounts.spotify.com/api/token",
+            headers={"Authorization": f"Basic {auth_header}"},
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+            },
+        )
+        if response.status_code != 200:
+            raise RuntimeError(f"Failed to refresh token: {response.text}")
+
+        token_info = response.json()
+        save_token(token_info)
+        return token_info["access_token"]
+
+
+def get_valid_token():
+    """Return a valid Spotify access token, refreshing if expired."""
+    access_token = r.get("spotify_access_token")
+    if access_token:
+        return access_token
+    return refresh_access_token()
 
 
 def get_spotify_client():
-    token_info = load_token()
-    if not token_info:
+    """Return a Spotify client with a valid token."""
+    token = get_valid_token()
+    if not token:
         return None
-    if sp_oauth.is_token_expired(token_info):
-        token_info = sp_oauth.refresh_access_token(token_info["refresh_token"])
-        save_token(token_info)
-    return Spotify(auth=token_info["access_token"])
-
+    return Spotify(auth=token)
 
 # ---------------------
 # Routes
@@ -157,7 +200,8 @@ def index():
     try:
         auth_url = sp_oauth.get_authorize_url()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create auth URL: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create auth URL: {e}")
     return RedirectResponse(auth_url)
 
 
@@ -184,7 +228,8 @@ def callback(request: Request):
     try:
         token_info = sp_oauth.get_access_token(code, as_dict=True)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Failed to exchange code for token: {e}")
+        raise HTTPException(
+            status_code=502, detail=f"Failed to exchange code for token: {e}")
 
     save_token(token_info)
 
@@ -221,7 +266,7 @@ def currently_playing():
     is_private = results.get("device", {}).get("is_private_session", False)
     if is_private:
         return RedirectResponse(status_code=204, url="/currently-playing-verbose")
-    
+
     if results and results.get("item") and results.get("is_playing"):
         track = results["item"]
         return {"artists": [artist["name"] for artist in track["artists"]], "track": track["name"]}
@@ -258,7 +303,7 @@ def currently_playing_verbose():
     is_private = results.get("device", {}).get("is_private_session", False)
     if is_private:
         return RedirectResponse(status_code=204, url="/currently-playing-verbose")
-    
+
     if results and results.get("item") and results.get("is_playing"):
         track = results["item"]
         track_id = track["id"]
@@ -333,7 +378,8 @@ def top_five():
     if not sp:
         raise HTTPException(status_code=401, detail="Spotify token not found")
     try:
-        top_tracks = sp.current_user_top_tracks(limit=5, time_range="short_term")
+        top_tracks = sp.current_user_top_tracks(
+            limit=5, time_range="short_term")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
     return {"top_tracks": top_tracks['items']}
@@ -360,7 +406,8 @@ def top_five_artists():
     if not sp:
         raise HTTPException(status_code=401, detail="Spotify token not found")
     try:
-        top_artists = sp.current_user_top_artists(limit=5, time_range="short_term")
+        top_artists = sp.current_user_top_artists(
+            limit=5, time_range="short_term")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
 
