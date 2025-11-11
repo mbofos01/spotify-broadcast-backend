@@ -118,6 +118,18 @@ class RecentlyPlayedTrack(BaseModel):
     spotify_url: str
     played_at: str
 
+
+class PlaylistInfo(BaseModel):
+    id: str
+    name: str
+    description: str | None
+    public: bool
+    collaborative: bool
+    owner: str
+    tracks_total: int
+    spotify_url: str
+    image_url: str | None
+
 # ---------------------
 # Helper Functions
 # ---------------------
@@ -481,5 +493,52 @@ def recently_played(limit: int = 5):
                 played_at=item.get("played_at"),
             )
         )
+
+    return items
+
+
+@app.get(
+    "/my-playlists",
+    response_model=list[PlaylistInfo],
+    summary="Get user's public playlists",
+    description=(
+        "Returns the authenticated user's public playlists. "
+        "Uses Spotify's `current_user_playlists` endpoint."
+    ),
+    responses={
+        200: {"description": "OK - list of public playlists", "model": list[PlaylistInfo]},
+        401: {"model": ErrorResponse, "description": "Unauthorized - no token"},
+        502: {"model": ErrorResponse, "description": "Upstream Spotify error"},
+    },
+    tags=["user"],
+)
+def my_playlists():
+    """Return the user's public playlists."""
+    sp = get_spotify_client()
+    if not sp:
+        raise HTTPException(status_code=401, detail="Spotify token not found")
+
+    try:
+        results = sp.current_user_playlists()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
+
+    items = []
+    for playlist in results.get("items", []):
+        # Only include public playlists
+        if playlist.get("public"):
+            items.append(
+                PlaylistInfo(
+                    id=playlist["id"],
+                    name=playlist["name"],
+                    description=playlist.get("description"),
+                    public=playlist["public"],
+                    collaborative=playlist.get("collaborative", False),
+                    owner=playlist["owner"]["display_name"],
+                    tracks_total=playlist["tracks"]["total"],
+                    spotify_url=playlist["external_urls"]["spotify"],
+                    image_url=playlist["images"][0]["url"] if playlist.get("images") else None,
+                )
+            )
 
     return items
