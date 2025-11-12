@@ -510,9 +510,9 @@ def recently_played(limit: int = 5):
         401: {"model": ErrorResponse, "description": "Unauthorized - no token"},
         502: {"model": ErrorResponse, "description": "Upstream Spotify error"},
     },
-    tags=["user"],
+    tags=["playlists"],
 )
-def my_playlists():
+def my_playlists(limit: int = 5):
     """Return the user's public playlists."""
     sp = get_spotify_client()
     if not sp:
@@ -524,7 +524,7 @@ def my_playlists():
         raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
 
     items = []
-    for playlist in results.get("items", []):
+    for playlist in results.get("items", [])[:limit]:
         # Only include public playlists
         if playlist.get("public"):
             items.append(
@@ -537,7 +537,8 @@ def my_playlists():
                     owner=playlist["owner"]["display_name"],
                     tracks_total=playlist["tracks"]["total"],
                     spotify_url=playlist["external_urls"]["spotify"],
-                    image_url=playlist["images"][0]["url"] if playlist.get("images") else None,
+                    image_url=playlist["images"][0]["url"] if playlist.get(
+                        "images") else None,
                 )
             )
 
