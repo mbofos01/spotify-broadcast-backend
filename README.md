@@ -129,14 +129,14 @@ All endpoints are defined in `main.py` and documented in the OpenAPI schema avai
 Simple calls (replace `localhost:8000` with your host if different):
 
 ```bash
-curl http://localhost:8000/currently-playing
-curl http://localhost:8000/currently-playing-verbose
-curl http://localhost:8000/user-info
-curl http://localhost:8000/top-five
-curl http://localhost:8000/top-five-artists
+curl "http://localhost:8000/currently-playing"
+curl "http://localhost:8000/currently-playing-verbose"
+curl "http://localhost:8000/user-info"
+curl "http://localhost:8000/top-five"
+curl "http://localhost:8000/top-five-artists"
 curl "http://localhost:8000/recently-played?limit=10"
 curl "http://localhost:8000/my-playlists?limit=5"
-curl http://localhost:8000/next-in-queue
+curl "http://localhost:8000/next-in-queue"
 ```
 
 ## OpenAPI docs
