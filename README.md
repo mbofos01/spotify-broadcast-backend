@@ -14,6 +14,10 @@ This repository contains a FastAPI backend that integrates with the Spotify API 
   - [`GET /currently-playing-verbose`](#get-currently-playing-verbose)
   - [`GET /user-info`](#get-user-info)
   - [`GET /top-five`](#get-top-five)
+  - [`GET /top-five-artists`](#get-top-five-artists)
+  - [`GET /recently-played`](#get-recently-played)
+  - [`GET /my-playlists`](#get-my-playlists)
+  - [`GET /next-in-queue`](#get-next-in-queue)
 - [Examples (curl)](#examples-curl)
 - [OpenAPI docs](#openapi-docs)
 - [Suggestions & next steps](#suggestions--next-steps)
@@ -80,7 +84,7 @@ All endpoints are defined in `main.py` and documented in the OpenAPI schema avai
 
 ### GET /currently-playing
 
-- Description: Returns minimal currently playing info: `{ artist, track }`.
+- Description: Returns minimal currently playing info: `{ artists, track }`.
 - Responses: `200` with `TrackInfo`, `204` if nothing is playing, `401` if no token, `502` for Spotify errors.
 
 ### GET /currently-playing-verbose
@@ -98,6 +102,28 @@ All endpoints are defined in `main.py` and documented in the OpenAPI schema avai
 - Description: Returns the user's top 5 tracks (short-term).
 - Responses: `200` with `{ "top_tracks": [...] }`, `401` if no token, `502` for Spotify errors.
 
+### GET /top-five-artists
+
+- Description: Returns the user's top 5 artists (short-term).
+- Responses: `200` with list of `ArtistInfo`, `401` if no token, `502` for Spotify errors.
+
+### GET /recently-played
+
+- Description: Returns the user's recently played tracks.
+- Query parameters: `limit` (optional, default: 5, max: 50)
+- Responses: `200` with list of `RecentlyPlayedTrack`, `401` if no token, `502` for Spotify errors.
+
+### GET /my-playlists
+
+- Description: Returns the user's public playlists.
+- Query parameters: `limit` (optional, default: 5)
+- Responses: `200` with list of `PlaylistInfo`, `401` if no token, `502` for Spotify errors.
+
+### GET /next-in-queue
+
+- Description: Returns the next track in the user's playback queue.
+- Responses: `200` with `QueueTrackInfo`, `204` if queue is empty, `401` if no token, `502` for Spotify errors.
+
 ## Examples (curl)
 
 Simple calls (replace `localhost:8000` with your host if different):
@@ -107,12 +133,18 @@ curl http://localhost:8000/currently-playing
 curl http://localhost:8000/currently-playing-verbose
 curl http://localhost:8000/user-info
 curl http://localhost:8000/top-five
+curl http://localhost:8000/top-five-artists
+curl "http://localhost:8000/recently-played?limit=10"
+curl "http://localhost:8000/my-playlists?limit=5"
+curl http://localhost:8000/next-in-queue
 ```
 
 ## OpenAPI docs
 
-- Swagger UI: `http://localhost:8000/swagger`
-- ReDoc: `http://localhost:8000/redoc`
+Once the server is running, you can access the interactive API documentation:
+
+- **Swagger UI**: [http://localhost:8000/swagger](http://localhost:8000/swagger)
+- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
 
 The OpenAPI UI now includes response code documentation and the `ErrorResponse` schema for error responses.
 
@@ -322,6 +354,101 @@ Success (200):
         },
     ]
 }
+```
+
+Error (401):
+
+```json
+{ "detail": "Spotify token not found" }
+```
+
+### GET /top-five-artists
+
+Success (200):
+
+```json
+{
+    "id": "1ZwdS5xdxEREPySFridCfh",
+    "name": "2Pac",
+    "uri": "spotify:artist:1ZwdS5xdxEREPySFridCfh",
+    "spotify_url": "https://open.spotify.com/artist/1ZwdS5xdxEREPySFridCfh",
+    "image_url": "https://i.scdn.co/image/ab6761610000e5eb...",
+    "followers": 12345678
+}
+```
+
+Error (401):
+
+```json
+{ "detail": "Spotify token not found" }
+```
+
+### GET /recently-played
+
+Success (200):
+
+```json
+{
+    "id": "3djNBlI7xOggg7pnsOLaNm",
+    "name": "California Love - Original Version",
+    "artists": ["2Pac", "Roger", "Dr. Dre"],
+    "album": "The Best of 2Pac",
+    "image_url": "https://i.scdn.co/image/ab67616d0000b273...",
+    "spotify_url": "https://open.spotify.com/track/3djNBlI7xOggg7pnsOLaNm",
+    "played_at": "2024-01-15T12:34:56.789Z"
+}
+```
+
+Error (401):
+
+```json
+{ "detail": "Spotify token not found" }
+```
+
+### GET /my-playlists
+
+Success (200):
+
+```json
+{
+    "id": "37i9dQZF1DXcBWIGoYBM5M",
+    "name": "Today's Top Hits",
+    "description": "Ed Sheeran is on top of the Hottest 50!",
+    "public": true,
+    "collaborative": false,
+    "owner": "Spotify",
+    "tracks_total": 50,
+    "spotify_url": "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M",
+    "image_url": "https://i.scdn.co/image/ab67706f00000003..."
+}
+```
+
+Error (401):
+
+```json
+{ "detail": "Spotify token not found" }
+```
+
+### GET /next-in-queue
+
+Success (200):
+
+```json
+{
+  "id": "5yEP6q9ugbSrzV4r5q5FQX",
+  "name": "The Less I Know The Better",
+  "artists": ["Tame Impala"],
+  "album": "Currents",
+  "image_url": "https://i.scdn.co/image/ab67616d0000b273...",
+  "spotify_url": "https://open.spotify.com/track/5yEP6q9ugbSrzV4r5q5FQX",
+  "duration_ms": 216320
+}
+```
+
+No content (204):
+
+```json
+{ "detail": "Queue is empty" }
 ```
 
 Error (401):
