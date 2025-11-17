@@ -130,6 +130,16 @@ class PlaylistInfo(BaseModel):
     spotify_url: str
     image_url: str | None
 
+
+class QueueTrackInfo(BaseModel):
+    id: str
+    name: str
+    artists: list[str]
+    album: str
+    image_url: str | None
+    spotify_url: str
+    duration_ms: int
+
 # ---------------------
 # Helper Functions
 # ---------------------
@@ -543,3 +553,47 @@ def my_playlists(limit: int = 5):
             )
 
     return items
+
+
+@app.get(
+    "/next-in-queue",
+    response_model=QueueTrackInfo,
+    summary="Get next song in queue",
+    description=(
+        "Returns the next track in the user's playback queue. "
+        "Uses Spotify's `queue` endpoint to fetch the upcoming track."
+    ),
+    responses={
+        200: {"description": "OK - next track in queue", "model": QueueTrackInfo},
+        204: {"description": "No Content - queue is empty"},
+        401: {"model": ErrorResponse, "description": "Unauthorized - no token"},
+        502: {"model": ErrorResponse, "description": "Upstream Spotify error"},
+    },
+    tags=["playback"],
+)
+def next_in_queue():
+    """Return the next track in the user's playback queue."""
+    sp = get_spotify_client()
+    if not sp:
+        raise HTTPException(status_code=401, detail="Spotify token not found")
+
+    try:
+        queue = sp.queue()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
+
+    # Get the first item in the queue (next track)
+    queue_items = queue.get("queue", [])
+    if not queue_items:
+        raise HTTPException(status_code=204, detail="Queue is empty")
+
+    next_track = queue_items[0]
+    return QueueTrackInfo(
+        id=next_track["id"],
+        name=next_track["name"],
+        artists=[artist["name"] for artist in next_track["artists"]],
+        album=next_track["album"]["name"],
+        image_url=next_track["album"]["images"][0]["url"] if next_track["album"].get("images") else None,
+        spotify_url=next_track["external_urls"]["spotify"],
+        duration_ms=next_track["duration_ms"],
+    )
