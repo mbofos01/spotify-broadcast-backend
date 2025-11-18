@@ -72,7 +72,6 @@ sp_oauth = SpotifyOAuth(
 class TrackInfo(BaseModel):
     artists: list[str]
     track: str
-    type: str  # "track" or "episode"
 
 
 class TrackVerboseInfo(BaseModel):
@@ -86,7 +85,6 @@ class TrackVerboseInfo(BaseModel):
     track_id: str
     spotify_url: str
     spotify_uri: str
-    type: str  # "track" or "episode"
 
 
 class UserInfo(BaseModel):
@@ -277,7 +275,7 @@ def callback(request: Request):
     response_model=TrackInfo,
     summary="Simple currently playing track",
     description=(
-        "Returns the currently playing track or podcast episode as a small object with `artist` and `track` fields. "
+        "Returns the currently playing track as a small object with `artist` and `track` fields. "
         "Requires a valid Spotify access token previously stored via the OAuth flow."
     ),
     responses={
@@ -289,7 +287,7 @@ def callback(request: Request):
     tags=["playback"],
 )
 def currently_playing():
-    """Return a minimal representation of the currently playing track or podcast."""
+    """Return a minimal representation of the currently playing track."""
     sp = get_spotify_client()
     if not sp:
         raise HTTPException(status_code=401, detail="Spotify token not found")
@@ -303,24 +301,9 @@ def currently_playing():
         return RedirectResponse(status_code=204, url="/currently-playing-verbose")
 
     if results and results.get("item") and results.get("is_playing"):
-        item = results["item"]
-        item_type = results.get("currently_playing_type", "track")
-        
-        if item_type == "episode":
-            # Podcast episode
-            return {
-                "artists": [item.get("show", {}).get("publisher", "Unknown")],
-                "track": item["name"],
-                "type": "episode"
-            }
-        else:
-            # Music track
-            return {
-                "artists": [artist["name"] for artist in item.get("artists", [])],
-                "track": item["name"],
-                "type": "track"
-            }
-    
+        track = results["item"]
+        return {"artists": [artist["name"] for artist in track["artists"]], "track": track["name"]}
+    # Nothing playing
     return RedirectResponse(status_code=204, url="/currently-playing")
 
 
@@ -329,7 +312,7 @@ def currently_playing():
     response_model=TrackVerboseInfo,
     summary="Verbose currently playing track",
     description=(
-        "Returns detailed information about the currently playing track or podcast episode including album/show, image URL, "
+        "Returns detailed information about the currently playing track including album, image URL, "
         "progress and duration in milliseconds, playback state, and Spotify URLs."
     ),
     responses={
@@ -341,7 +324,7 @@ def currently_playing():
     tags=["playback"],
 )
 def currently_playing_verbose():
-    """Return a detailed representation of the currently playing track or podcast."""
+    """Return a detailed representation of the currently playing track."""
     sp = get_spotify_client()
     if not sp:
         raise HTTPException(status_code=401, detail="Spotify token not found")
@@ -355,43 +338,22 @@ def currently_playing_verbose():
         return RedirectResponse(status_code=204, url="/currently-playing-verbose")
 
     if results and results.get("item") and results.get("is_playing"):
-        item = results["item"]
-        item_type = results.get("currently_playing_type", "track")
-        item_id = item["id"]
+        track = results["item"]
+        track_id = track["id"]
         position_seconds = results["progress_ms"] // 1000
-        
-        if item_type == "episode":
-            # Podcast episode
-            show = item.get("show", {})
-            return {
-                "artists": [show.get("publisher", "Unknown")],
-                "track": item["name"],
-                "album": show.get("name", "Unknown Show"),
-                "image_url": item.get("images", [{}])[0].get("url", ""),
-                "progress_ms": results["progress_ms"],
-                "duration_ms": item["duration_ms"],
-                "is_playing": results["is_playing"],
-                "spotify_url": f"https://open.spotify.com/episode/{item_id}?t={position_seconds}",
-                "spotify_uri": f"spotify:episode:{item_id}",
-                "track_id": item_id,
-                "type": "episode"
-            }
-        else:
-            # Music track
-            return {
-                "artists": [artist["name"] for artist in item.get("artists", [])],
-                "track": item["name"],
-                "album": item.get("album", {}).get("name", ""),
-                "image_url": item.get("album", {}).get("images", [{}])[0].get("url", ""),
-                "progress_ms": results["progress_ms"],
-                "duration_ms": item["duration_ms"],
-                "is_playing": results["is_playing"],
-                "spotify_url": f"https://open.spotify.com/track/{item_id}?t={position_seconds}",
-                "spotify_uri": f"spotify:track:{item_id}",
-                "track_id": item_id,
-                "type": "track"
-            }
-    
+        return {
+            "artists": [artist["name"] for artist in track["artists"]],
+            "track": track["name"],
+            "album": track["album"]["name"],
+            "image_url": track["album"]["images"][0]["url"],
+            "progress_ms": results["progress_ms"],
+            "duration_ms": track["duration_ms"],
+            "is_playing": results["is_playing"],
+            "spotify_url": f"https://open.spotify.com/track/{track_id}?t={position_seconds}",
+            "spotify_uri": f"spotify:track:{track_id}",
+            "track_id": track_id,
+        }
+    # Nothing playing
     return RedirectResponse(status_code=204, url="/currently-playing-verbose")
 
 
