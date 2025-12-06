@@ -534,7 +534,12 @@ def my_playlists(limit: int = 5):
         raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
 
     items = []
-    for playlist in results.get("items", [])[:limit]:
+    if limit != -1:
+        playlists = results.get("items", [])[:limit]
+    else:
+        playlists = results.get("items", [])
+        
+    for playlist in playlists:
         # Only include public playlists
         if playlist.get("public"):
             items.append(
