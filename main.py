@@ -222,6 +222,27 @@ def get_spotify_client():
     if not token:
         return None
     return Spotify(auth=token)
+
+
+def clean_track_data(track):
+    """Clean track data by removing unnecessary fields like available_markets."""
+    return {
+        "id": track.get("id"),
+        "name": track.get("name"),
+        "artists": [{"name": artist["name"], "id": artist["id"]} for artist in track.get("artists", [])],
+        "album": {
+            "name": track.get("album", {}).get("name"),
+            "id": track.get("album", {}).get("id"),
+            "images": track.get("album", {}).get("images", [])
+        },
+        "duration_ms": track.get("duration_ms"),
+        "explicit": track.get("explicit"),
+        "external_urls": track.get("external_urls", {}),
+        "popularity": track.get("popularity"),
+        "preview_url": track.get("preview_url"),
+        "uri": track.get("uri")
+    }
+
 # ---------------------
 # Routes
 # ---------------------
@@ -619,7 +640,7 @@ def next_in_queue():
     summary="Get Spotify Wrapped data",
     description=(
         "Returns Spotify Wrapped-style data for the authenticated user. "
-        "Supports 'short_term' (6 months), 'medium_term' (6 months), and 'long_term' (past year) periods. "
+        "Supports 'short_term' (4 weeks), 'medium_term' (6 months), and 'long_term' (past year) periods. "
         "Includes top artists, tracks, genres, and listening statistics."
     ),
     responses={
@@ -644,7 +665,7 @@ def spotify_wrapped(period: str = "long_term"):
         raise HTTPException(status_code=401, detail="Spotify token not found")
     
     try:
-        # Get top artists (up to 50)
+        # Get top artists (up to 50) - Sorted by Spotify's algorithm (listening frequency/time)
         top_artists_response = sp.current_user_top_artists(limit=50, time_range=period)
         top_artists = []
         all_genres = []
@@ -661,16 +682,16 @@ def spotify_wrapped(period: str = "long_term"):
             # Collect genres from all artists
             all_genres.extend(artist.get("genres", []))
         
-        # Get top tracks (up to 50)
+        # Get top tracks (up to 50) - Sorted by Spotify's algorithm (listening frequency/time) 
         top_tracks_response = sp.current_user_top_tracks(limit=50, time_range=period)
-        top_tracks = top_tracks_response.get("items", [])
+        top_tracks = [clean_track_data(track) for track in top_tracks_response.get("items", [])]
         
         # Get unique genres and count them
         genre_counts = {}
         for genre in all_genres:
             genre_counts[genre] = genre_counts.get(genre, 0) + 1
         
-        # Sort genres by frequency and take top 10
+        # Sort genres by frequency (most common first) and take top 10
         top_genres = sorted(genre_counts.keys(), key=lambda x: genre_counts[x], reverse=True)[:10]
         
         # Determine period description
@@ -683,7 +704,7 @@ def spotify_wrapped(period: str = "long_term"):
         return WrappedData(
             period=period_descriptions[period],
             top_artists=top_artists[:10],  # Return top 10 artists
-            top_tracks=top_tracks[:10],    # Return top 10 tracks
+            top_tracks=top_tracks[:10],    # Return top 10 cleaned tracks
             total_artists=len(top_artists),
             total_tracks=len(top_tracks),
             top_genres=top_genres
