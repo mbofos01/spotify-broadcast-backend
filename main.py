@@ -54,7 +54,8 @@ SCOPE = [
     "user-read-recently-played",
     "user-top-read",
     "user-read-email",
-    "user-read-private"
+    "user-read-private",
+    "user-library-read"
 ]
 
 sp_oauth = SpotifyOAuth(
@@ -139,6 +140,18 @@ class QueueTrackInfo(BaseModel):
     image_url: str | None
     spotify_url: str
     duration_ms: int
+
+
+class PodcastShowInfo(BaseModel):
+    id: str
+    name: str
+    description: str | None
+    publisher: str
+    spotify_url: str
+    image_url: str | None
+    total_episodes: int
+    is_externally_hosted: bool
+    languages: list[str]
 
 
 class WrappedData(BaseModel):
@@ -630,6 +643,55 @@ def next_in_queue():
         spotify_url=next_track["external_urls"]["spotify"],
         duration_ms=next_track["duration_ms"],
     )
+
+
+@app.get(
+    "/saved-shows",
+    response_model=list[PodcastShowInfo],
+    summary="Get user's saved podcast shows",
+    description=(
+        "Returns the authenticated user's saved podcast shows (podcasts they follow). "
+        "Uses Spotify's `current_user_saved_shows` endpoint with optional limit parameter."
+    ),
+    responses={
+        200: {"description": "OK - list of saved shows", "model": list[PodcastShowInfo]},
+        401: {"model": ErrorResponse, "description": "Unauthorized - no token"},
+        502: {"model": ErrorResponse, "description": "Upstream Spotify error"},
+    },
+    tags=["podcasts"],
+)
+def saved_shows(limit: int = 20):
+    """Return the user's saved podcast shows."""
+    if limit > 50:
+        limit = 50  # Spotify max
+
+    sp = get_spotify_client()
+    if not sp:
+        raise HTTPException(status_code=401, detail="Spotify token not found")
+
+    try:
+        results = sp.current_user_saved_shows(limit=limit)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
+
+    items = []
+    for item in results.get("items", []):
+        show = item["show"]
+        items.append(
+            PodcastShowInfo(
+                id=show["id"],
+                name=show["name"],
+                description=show.get("description"),
+                publisher=show.get("publisher", "Unknown"),
+                spotify_url=show["external_urls"]["spotify"],
+                image_url=show["images"][0]["url"] if show.get("images") else None,
+                total_episodes=show.get("total_episodes", 0),
+                is_externally_hosted=show.get("is_externally_hosted", False),
+                languages=show.get("languages", []),
+            )
+        )
+
+    return items
 
 
 @app.get(
