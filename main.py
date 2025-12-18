@@ -145,8 +145,6 @@ class WrappedData(BaseModel):
     period: str
     top_artists: list[ArtistInfo]
     top_tracks: list[dict]
-    total_artists: int
-    total_tracks: int
     top_genres: list[str]
 
 # ---------------------
@@ -705,8 +703,6 @@ def spotify_wrapped(period: str = "long_term"):
             period=period_descriptions[period],
             top_artists=top_artists[:10],  # Return top 10 artists
             top_tracks=top_tracks[:10],    # Return top 10 cleaned tracks
-            total_artists=len(top_artists),
-            total_tracks=len(top_tracks),
             top_genres=top_genres
         )
         
