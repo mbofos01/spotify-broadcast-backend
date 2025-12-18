@@ -639,7 +639,7 @@ def next_in_queue():
     description=(
         "Returns Spotify Wrapped-style data for the authenticated user. "
         "Supports 'short_term' (4 weeks), 'medium_term' (6 months), and 'long_term' (past year) periods. "
-        "Includes top artists, tracks, genres, and listening statistics."
+        "Includes top artists, tracks, albums, genres, and listening statistics."
     ),
     responses={
         200: {"description": "OK - wrapped data", "model": WrappedData},
@@ -683,6 +683,30 @@ def spotify_wrapped(period: str = "long_term"):
         # Get top tracks (up to 50) - Sorted by Spotify's algorithm (listening frequency/time) 
         top_tracks_response = sp.current_user_top_tracks(limit=50, time_range=period)
         top_tracks = [clean_track_data(track) for track in top_tracks_response.get("items", [])]
+        
+        # Extract and count albums from top tracks
+        album_counts = {}
+        album_data = {}
+        for track in top_tracks_response.get("items", []):
+            album = track.get("album", {})
+            album_id = album.get("id")
+            if album_id:
+                album_counts[album_id] = album_counts.get(album_id, 0) + 1
+                if album_id not in album_data:
+                    album_data[album_id] = {
+                        "id": album_id,
+                        "name": album.get("name"),
+                        "artists": [{"name": artist["name"], "id": artist["id"]} for artist in album.get("artists", [])],
+                        "images": album.get("images", []),
+                        "release_date": album.get("release_date"),
+                        "total_tracks": album.get("total_tracks"),
+                        "uri": album.get("uri"),
+                        "external_urls": album.get("external_urls", {})
+                    }
+        
+        # Sort albums by frequency (most tracks from album in top tracks)
+        sorted_albums = sorted(album_counts.items(), key=lambda x: x[1], reverse=True)
+        top_albums = [album_data[album_id] for album_id, _ in sorted_albums[:10]]
         
         # Get unique genres and count them
         genre_counts = {}
