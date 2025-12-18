@@ -140,6 +140,15 @@ class QueueTrackInfo(BaseModel):
     spotify_url: str
     duration_ms: int
 
+
+class WrappedData(BaseModel):
+    period: str
+    top_artists: list[ArtistInfo]
+    top_tracks: list[dict]
+    total_artists: int
+    total_tracks: int
+    top_genres: list[str]
+
 # ---------------------
 # Helper Functions
 # ---------------------
@@ -602,3 +611,83 @@ def next_in_queue():
         spotify_url=next_track["external_urls"]["spotify"],
         duration_ms=next_track["duration_ms"],
     )
+
+
+@app.get(
+    "/wrapped",
+    response_model=WrappedData,
+    summary="Get Spotify Wrapped data",
+    description=(
+        "Returns Spotify Wrapped-style data for the authenticated user. "
+        "Supports 'short_term' (6 months), 'medium_term' (6 months), and 'long_term' (past year) periods. "
+        "Includes top artists, tracks, genres, and listening statistics."
+    ),
+    responses={
+        200: {"description": "OK - wrapped data", "model": WrappedData},
+        400: {"model": ErrorResponse, "description": "Invalid time period"},
+        401: {"model": ErrorResponse, "description": "Unauthorized - no token"},
+        502: {"model": ErrorResponse, "description": "Upstream Spotify error"},
+    },
+    tags=["user"],
+)
+def spotify_wrapped(period: str = "long_term"):
+    """Return Spotify Wrapped-style data for the specified time period."""
+    valid_periods = ["short_term", "medium_term", "long_term"]
+    if period not in valid_periods:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid period. Must be one of: {', '.join(valid_periods)}"
+        )
+    
+    sp = get_spotify_client()
+    if not sp:
+        raise HTTPException(status_code=401, detail="Spotify token not found")
+    
+    try:
+        # Get top artists (up to 50)
+        top_artists_response = sp.current_user_top_artists(limit=50, time_range=period)
+        top_artists = []
+        all_genres = []
+        
+        for artist in top_artists_response.get("items", []):
+            top_artists.append(ArtistInfo(
+                id=artist["id"],
+                name=artist["name"],
+                uri=artist["uri"],
+                spotify_url=artist["external_urls"]["spotify"],
+                image_url=artist["images"][0]["url"] if artist.get("images") else None,
+                followers=artist["followers"]["total"]
+            ))
+            # Collect genres from all artists
+            all_genres.extend(artist.get("genres", []))
+        
+        # Get top tracks (up to 50)
+        top_tracks_response = sp.current_user_top_tracks(limit=50, time_range=period)
+        top_tracks = top_tracks_response.get("items", [])
+        
+        # Get unique genres and count them
+        genre_counts = {}
+        for genre in all_genres:
+            genre_counts[genre] = genre_counts.get(genre, 0) + 1
+        
+        # Sort genres by frequency and take top 10
+        top_genres = sorted(genre_counts.keys(), key=lambda x: genre_counts[x], reverse=True)[:10]
+        
+        # Determine period description
+        period_descriptions = {
+            "short_term": "Past 4 Weeks",
+            "medium_term": "Past 6 Months", 
+            "long_term": "Past Year"
+        }
+        
+        return WrappedData(
+            period=period_descriptions[period],
+            top_artists=top_artists[:10],  # Return top 10 artists
+            top_tracks=top_tracks[:10],    # Return top 10 tracks
+            total_artists=len(top_artists),
+            total_tracks=len(top_tracks),
+            top_genres=top_genres
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
