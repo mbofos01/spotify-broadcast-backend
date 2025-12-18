@@ -726,7 +726,7 @@ def spotify_wrapped(period: str = "long_term"):
     
     try:
         # Get top artists (up to 50) - Sorted by Spotify's algorithm (listening frequency/time)
-        top_artists_response = sp.current_user_top_artists(limit=500, time_range=period)
+        top_artists_response = sp.current_user_top_artists(limit=50, time_range=period)
         top_artists = []
         all_genres = []
         
@@ -743,7 +743,7 @@ def spotify_wrapped(period: str = "long_term"):
             all_genres.extend(artist.get("genres", []))
         
         # Get top tracks (up to 50) - Sorted by Spotify's algorithm (listening frequency/time) 
-        top_tracks_response = sp.current_user_top_tracks(limit=500, time_range=period)
+        top_tracks_response = sp.current_user_top_tracks(limit=50, time_range=period)
         top_tracks = [clean_track_data(track) for track in top_tracks_response.get("items", [])]
         
         # Get unique genres and count them
