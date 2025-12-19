@@ -20,13 +20,10 @@ app = FastAPI(
     title="Spotify Broadcast Backend",
     version="1.0.0",
     docs_url="/swagger",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
 
-origins = [
-    "http://localhost:3000",
-    os.environ.get("FRONT_END_SERVER")
-]
+origins = ["http://localhost:3000", os.environ.get("FRONT_END_SERVER")]
 
 app.add_middleware(
     CORSMiddleware,
@@ -55,14 +52,14 @@ SCOPE = [
     "user-top-read",
     "user-read-email",
     "user-read-private",
-    "user-library-read"
+    "user-library-read",
 ]
 
 sp_oauth = SpotifyOAuth(
     client_id=CLIENT_ID,
     client_secret=CLIENT_SECRET,
     redirect_uri=REDIRECT_URI,
-    scope=SCOPE
+    scope=SCOPE,
 )
 
 # ---------------------
@@ -160,14 +157,14 @@ class WrappedData(BaseModel):
     top_tracks: list[dict]
     top_genres: list[str]
 
+
 # ---------------------
 # Helper Functions
 # ---------------------
 
 
 # Setup encryption
-ENCRYPTION_KEY = os.environ.get(
-    "ENCRYPTION_KEY").encode()  # store safely in env
+ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY").encode()  # store safely in env
 fernet = Fernet(ENCRYPTION_KEY)
 
 
@@ -201,8 +198,7 @@ def refresh_access_token():
             return fernet.decrypt(encrypted_access.encode()).decode()
 
         # Request new access token from Spotify
-        auth_header = base64.b64encode(
-            f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode()
+        auth_header = base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode()
         response = requests.post(
             "https://accounts.spotify.com/api/token",
             headers={"Authorization": f"Basic {auth_header}"},
@@ -240,19 +236,23 @@ def clean_track_data(track):
     return {
         "id": track.get("id"),
         "name": track.get("name"),
-        "artists": [{"name": artist["name"], "id": artist["id"]} for artist in track.get("artists", [])],
+        "artists": [
+            {"name": artist["name"], "id": artist["id"]}
+            for artist in track.get("artists", [])
+        ],
         "album": {
             "name": track.get("album", {}).get("name"),
             "id": track.get("album", {}).get("id"),
-            "images": track.get("album", {}).get("images", [])
+            "images": track.get("album", {}).get("images", []),
         },
         "duration_ms": track.get("duration_ms"),
         "explicit": track.get("explicit"),
         "external_urls": track.get("external_urls", {}),
         "popularity": track.get("popularity"),
         "preview_url": track.get("preview_url"),
-        "uri": track.get("uri")
+        "uri": track.get("uri"),
     }
+
 
 # ---------------------
 # Routes
@@ -265,7 +265,10 @@ def clean_track_data(track):
     description="Redirects the client to Spotify's authorization page to start the OAuth flow.",
     responses={
         302: {"description": "Redirect to Spotify authorization URL"},
-        500: {"model": ErrorResponse, "description": "Failed to generate authorization URL"},
+        500: {
+            "model": ErrorResponse,
+            "description": "Failed to generate authorization URL",
+        },
     },
     tags=["auth"],
 )
@@ -274,8 +277,7 @@ def index():
     try:
         auth_url = sp_oauth.get_authorize_url()
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to create auth URL: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create auth URL: {e}")
     return RedirectResponse(auth_url)
 
 
@@ -303,7 +305,8 @@ def callback(request: Request):
         token_info = sp_oauth.get_access_token(code, as_dict=True)
     except Exception as e:
         raise HTTPException(
-            status_code=502, detail=f"Failed to exchange code for token: {e}")
+            status_code=502, detail=f"Failed to exchange code for token: {e}"
+        )
 
     save_token(token_info)
 
@@ -343,7 +346,10 @@ def currently_playing():
 
     if results and results.get("item") and results.get("is_playing"):
         track = results["item"]
-        return {"artists": [artist["name"] for artist in track["artists"]], "track": track["name"]}
+        return {
+            "artists": [artist["name"] for artist in track["artists"]],
+            "track": track["name"],
+        }
     # Nothing playing
     return RedirectResponse(status_code=204, url="/currently-playing")
 
@@ -425,7 +431,9 @@ def get_user_info():
     return {
         "display_name": me["display_name"],
         "uri": me["uri"],
-        "image": me["images"][0]["url"] if me.get("images") else "https://i.scdn.co/image/ab67616100005174f1b7d5bb5d46191501fbd804",
+        "image": me["images"][0]["url"]
+        if me.get("images")
+        else "https://i.scdn.co/image/ab67616100005174f1b7d5bb5d46191501fbd804",
         "height": me["images"][0]["height"] if me.get("images") else None,
         "width": me["images"][0]["width"] if me.get("images") else None,
         "followers": me["followers"]["total"] if me.get("followers") else None,
@@ -452,11 +460,10 @@ def top_five():
     if not sp:
         raise HTTPException(status_code=401, detail="Spotify token not found")
     try:
-        top_tracks = sp.current_user_top_tracks(
-            limit=5, time_range="short_term")
+        top_tracks = sp.current_user_top_tracks(limit=5, time_range="short_term")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
-    return {"top_tracks": top_tracks['items']}
+    return {"top_tracks": top_tracks["items"]}
 
 
 @app.get(
@@ -480,8 +487,7 @@ def top_five_artists():
     if not sp:
         raise HTTPException(status_code=401, detail="Spotify token not found")
     try:
-        top_artists = sp.current_user_top_artists(
-            limit=5, time_range="short_term")
+        top_artists = sp.current_user_top_artists(limit=5, time_range="short_term")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
 
@@ -494,7 +500,9 @@ def top_five_artists():
                 "name": a.get("name"),
                 "uri": a.get("uri"),
                 "spotify_url": a.get("external_urls", {}).get("spotify"),
-                "image_url": a.get("images", [{}])[0].get("url") if a.get("images") else None,
+                "image_url": a.get("images", [{}])[0].get("url")
+                if a.get("images")
+                else None,
                 "followers": a.get("followers", {}).get("total", 0),
             }
         )
@@ -510,7 +518,10 @@ def top_five_artists():
         "Uses Spotify's `current_user_recently_played` with a default `limit=5` (max 50)."
     ),
     responses={
-        200: {"description": "OK - list of recently played tracks", "model": list[RecentlyPlayedTrack]},
+        200: {
+            "description": "OK - list of recently played tracks",
+            "model": list[RecentlyPlayedTrack],
+        },
         401: {"model": ErrorResponse, "description": "Unauthorized - no token"},
         502: {"model": ErrorResponse, "description": "Upstream Spotify error"},
     },
@@ -539,7 +550,9 @@ def recently_played(limit: int = 5):
                 name=track["name"],
                 artists=[artist["name"] for artist in track["artists"]],
                 album=track["album"]["name"],
-                image_url=track["album"]["images"][0]["url"] if track["album"]["images"] else None,
+                image_url=track["album"]["images"][0]["url"]
+                if track["album"]["images"]
+                else None,
                 spotify_url=track["external_urls"]["spotify"],
                 played_at=item.get("played_at"),
             )
@@ -557,7 +570,10 @@ def recently_played(limit: int = 5):
         "Uses Spotify's `current_user_playlists` endpoint."
     ),
     responses={
-        200: {"description": "OK - list of public playlists", "model": list[PlaylistInfo]},
+        200: {
+            "description": "OK - list of public playlists",
+            "model": list[PlaylistInfo],
+        },
         401: {"model": ErrorResponse, "description": "Unauthorized - no token"},
         502: {"model": ErrorResponse, "description": "Upstream Spotify error"},
     },
@@ -579,7 +595,7 @@ def my_playlists(limit: int = 5):
         playlists = results.get("items", [])[:limit]
     else:
         playlists = results.get("items", [])
-        
+
     for playlist in playlists:
         # Only include public playlists
         if playlist.get("public"):
@@ -593,8 +609,9 @@ def my_playlists(limit: int = 5):
                     owner=playlist["owner"]["display_name"],
                     tracks_total=playlist["tracks"]["total"],
                     spotify_url=playlist["external_urls"]["spotify"],
-                    image_url=playlist["images"][0]["url"] if playlist.get(
-                        "images") else None,
+                    image_url=playlist["images"][0]["url"]
+                    if playlist.get("images")
+                    else None,
                 )
             )
 
@@ -639,7 +656,9 @@ def next_in_queue():
         name=next_track["name"],
         artists=[artist["name"] for artist in next_track["artists"]],
         album=next_track["album"]["name"],
-        image_url=next_track["album"]["images"][0]["url"] if next_track["album"].get("images") else None,
+        image_url=next_track["album"]["images"][0]["url"]
+        if next_track["album"].get("images")
+        else None,
         spotify_url=next_track["external_urls"]["spotify"],
         duration_ms=next_track["duration_ms"],
     )
@@ -654,7 +673,10 @@ def next_in_queue():
         "Uses Spotify's `current_user_saved_shows` endpoint with optional limit parameter."
     ),
     responses={
-        200: {"description": "OK - list of saved shows", "model": list[PodcastShowInfo]},
+        200: {
+            "description": "OK - list of saved shows",
+            "model": list[PodcastShowInfo],
+        },
         401: {"model": ErrorResponse, "description": "Unauthorized - no token"},
         502: {"model": ErrorResponse, "description": "Upstream Spotify error"},
     },
@@ -716,57 +738,65 @@ def spotify_wrapped(period: str = "long_term"):
     valid_periods = ["short_term", "medium_term", "long_term"]
     if period not in valid_periods:
         raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid period. Must be one of: {', '.join(valid_periods)}"
+            status_code=400,
+            detail=f"Invalid period. Must be one of: {', '.join(valid_periods)}",
         )
-    
+
     sp = get_spotify_client()
     if not sp:
         raise HTTPException(status_code=401, detail="Spotify token not found")
-    
+
     try:
         # Get top artists (up to 50) - Sorted by Spotify's algorithm (listening frequency/time)
         top_artists_response = sp.current_user_top_artists(limit=50, time_range=period)
         top_artists = []
         all_genres = []
-        
+
         for artist in top_artists_response.get("items", []):
-            top_artists.append(ArtistInfo(
-                id=artist["id"],
-                name=artist["name"],
-                uri=artist["uri"],
-                spotify_url=artist["external_urls"]["spotify"],
-                image_url=artist["images"][0]["url"] if artist.get("images") else None,
-                followers=artist["followers"]["total"]
-            ))
+            top_artists.append(
+                ArtistInfo(
+                    id=artist["id"],
+                    name=artist["name"],
+                    uri=artist["uri"],
+                    spotify_url=artist["external_urls"]["spotify"],
+                    image_url=artist["images"][0]["url"]
+                    if artist.get("images")
+                    else None,
+                    followers=artist["followers"]["total"],
+                )
+            )
             # Collect genres from all artists
             all_genres.extend(artist.get("genres", []))
-        
-        # Get top tracks (up to 50) - Sorted by Spotify's algorithm (listening frequency/time) 
+
+        # Get top tracks (up to 50) - Sorted by Spotify's algorithm (listening frequency/time)
         top_tracks_response = sp.current_user_top_tracks(limit=50, time_range=period)
-        top_tracks = [clean_track_data(track) for track in top_tracks_response.get("items", [])]
-        
+        top_tracks = [
+            clean_track_data(track) for track in top_tracks_response.get("items", [])
+        ]
+
         # Get unique genres and count them
         genre_counts = {}
         for genre in all_genres:
             genre_counts[genre] = genre_counts.get(genre, 0) + 1
-        
+
         # Sort genres by frequency (most common first) and take top 10
-        top_genres = sorted(genre_counts.keys(), key=lambda x: genre_counts[x], reverse=True)[:10]
-        
+        top_genres = sorted(
+            genre_counts.keys(), key=lambda x: genre_counts[x], reverse=True
+        )[:10]
+
         # Determine period description
         period_descriptions = {
             "short_term": "Past 4 Weeks",
-            "medium_term": "Past 6 Months", 
-            "long_term": "Past Year"
+            "medium_term": "Past 6 Months",
+            "long_term": "Past Year",
         }
-        
+
         return WrappedData(
             period=period_descriptions[period],
             top_artists=top_artists[:10],  # Return top 10 artists
-            top_tracks=top_tracks[:10],    # Return top 10 cleaned tracks
-            top_genres=top_genres
+            top_tracks=top_tracks[:10],  # Return top 10 cleaned tracks
+            top_genres=top_genres,
         )
-        
+
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
