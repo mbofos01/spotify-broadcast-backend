@@ -321,6 +321,9 @@ def clean_track_data(track):
 def cached_api_call(cache_key: str, ttl: int, lock_timeout: int = 5):
     """Decorator for caching API responses with Redis lock to prevent thundering herd.
     
+    Caches serialized response data and returns dicts instead of Pydantic models.
+    FastAPI will validate the dicts against the response model.
+    
     Args:
         cache_key: Redis key for caching (can include {param_name} placeholders)
         ttl: Time-to-live in seconds
@@ -338,59 +341,22 @@ def cached_api_call(cache_key: str, ttl: int, lock_timeout: int = 5):
             
             lock_key = f"{actual_cache_key}_lock"
             
-            # Check cache
+            # Check cache and return dicts (FastAPI will validate)
             cached = r.get(actual_cache_key)
             if cached is not None:
-                cached_data = json.loads(cached)
-                # Reconstruct Pydantic models from cached dicts
-                return_type = func.__annotations__.get('return')
-                if return_type and cached_data:
-                    try:
-                        if isinstance(cached_data, list):
-                            # Handle list of models - get the inner type
-                            origin = getattr(return_type, '__origin__', None)
-                            if origin is list:
-                                item_type = getattr(return_type, '__args__', (dict,))[0]
-                                return [item_type(**item) if isinstance(item, dict) else item for item in cached_data]
-                        else:
-                            # Handle single model
-                            if hasattr(return_type, 'model_validate'):
-                                return return_type.model_validate(cached_data)
-                            elif hasattr(return_type, '__call__'):
-                                return return_type(**cached_data) if isinstance(cached_data, dict) else cached_data
-                    except Exception:
-                        # If conversion fails, just return the cached data
-                        return cached_data
-                return cached_data
+                return json.loads(cached)
             
-            # Try to acquire lock; if not, wait for cache
+            # Try to acquire lock; if not, wait for cache to be populated
             if not r.set(lock_key, "1", nx=True, ex=lock_timeout):
                 for _ in range(10):
                     time.sleep(0.2)
                     cached = r.get(actual_cache_key)
                     if cached is not None:
-                        # Same reconstruction logic as above
-                        cached_data = json.loads(cached)
-                        return_type = func.__annotations__.get('return')
-                        if return_type and cached_data:
-                            try:
-                                if isinstance(cached_data, list):
-                                    origin = getattr(return_type, '__origin__', None)
-                                    if origin is list:
-                                        item_type = getattr(return_type, '__args__', (dict,))[0]
-                                        return [item_type(**item) if isinstance(item, dict) else item for item in cached_data]
-                                else:
-                                    if hasattr(return_type, 'model_validate'):
-                                        return return_type.model_validate(cached_data)
-                                    elif hasattr(return_type, '__call__'):
-                                        return return_type(**cached_data) if isinstance(cached_data, dict) else cached_data
-                            except Exception:
-                                return cached_data
-                        return cached_data
+                        return json.loads(cached)
             
             try:
                 result = func(*args, **kwargs)
-                # Convert to cacheable format (dicts)
+                # Convert Pydantic models to dicts for caching
                 if isinstance(result, list):
                     cacheable = [
                         item.model_dump() if hasattr(item, 'model_dump') else item
@@ -400,8 +366,13 @@ def cached_api_call(cache_key: str, ttl: int, lock_timeout: int = 5):
                     cacheable = result.model_dump()
                 else:
                     cacheable = result
-                r.set(actual_cache_key, json.dumps(cacheable, default=str), ex=ttl)
-                return result
+                
+                # Cache and return the serialized form
+                cached_json = json.dumps(cacheable, default=str)
+                r.set(actual_cache_key, cached_json, ex=ttl)
+                
+                # Return dicts (FastAPI validates against response model)
+                return json.loads(cached_json)
             finally:
                 r.delete(lock_key)
         
