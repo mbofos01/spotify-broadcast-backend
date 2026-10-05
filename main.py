@@ -14,6 +14,7 @@ import os
 import json
 import time
 import redis
+import functools
 
 # ---------------------
 # FastAPI Setup
@@ -317,6 +318,55 @@ def clean_track_data(track):
     }
 
 
+def cached_api_call(cache_key: str, ttl: int, lock_timeout: int = 5):
+    """Decorator for caching API responses with Redis lock to prevent thundering herd.
+    
+    Args:
+        cache_key: Redis key for caching (can include {param_name} placeholders)
+        ttl: Time-to-live in seconds
+        lock_timeout: Lock timeout in seconds (default 5)
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            # Build cache key with parameters if they're in the template
+            actual_cache_key = cache_key
+            for key, value in kwargs.items():
+                placeholder = f"{{{key}}}"
+                if placeholder in actual_cache_key:
+                    actual_cache_key = actual_cache_key.replace(placeholder, str(value))
+            
+            lock_key = f"{actual_cache_key}_lock"
+            
+            # Check cache
+            cached = r.get(actual_cache_key)
+            if cached is not None:
+                return json.loads(cached)
+            
+            # Try to acquire lock; if not, wait for cache
+            if not r.set(lock_key, "1", nx=True, ex=lock_timeout):
+                for _ in range(10):
+                    time.sleep(0.2)
+                    cached = r.get(actual_cache_key)
+                    if cached is not None:
+                        return json.loads(cached)
+            
+            try:
+                result = func(*args, **kwargs)
+                # Handle Pydantic models by converting to dict
+                if hasattr(result, 'model_dump'):
+                    result = result.model_dump()
+                elif hasattr(result, 'dict'):
+                    result = result.dict()
+                r.set(actual_cache_key, json.dumps(result, default=str), ex=ttl)
+                return result
+            finally:
+                r.delete(lock_key)
+        
+        return wrapper
+    return decorator
+
+
 # ---------------------
 # Routes
 # ---------------------
@@ -470,6 +520,7 @@ def currently_playing_verbose():
     },
     tags=["user"],
 )
+@cached_api_call(cache_key="user_info", ttl=21600)  # 6 hours
 def get_user_info():
     """Return Spotify profile information for the authenticated user."""
     sp = get_spotify_client()
@@ -505,6 +556,7 @@ def get_user_info():
     },
     tags=["user"],
 )
+@cached_api_call(cache_key="top_five", ttl=14400)  # 4 hours
 def top_five():
     """Return the user's top five tracks in the short-term time range."""
     sp = get_spotify_client()
@@ -633,6 +685,7 @@ def recently_played(limit: int = 5):
     },
     tags=["playlists"],
 )
+@cached_api_call(cache_key="my_playlists_{limit}", ttl=14400)  # 4 hours
 def my_playlists(limit: int = 5):
     """Return the user's public playlists."""
     sp = get_spotify_client()
@@ -736,6 +789,7 @@ def next_in_queue():
     },
     tags=["podcasts"],
 )
+@cached_api_call(cache_key="saved_shows_{limit}", ttl=43200)  # 12 hours
 def saved_shows(limit: int = 20):
     """Return the user's saved podcast shows."""
     if limit > 50:
@@ -788,6 +842,7 @@ def saved_shows(limit: int = 20):
     },
     tags=["albums"],
 )
+@cached_api_call(cache_key="saved_albums_{limit}", ttl=43200)  # 12 hours
 def saved_albums(limit: int = 20):
     """Return the user's saved albums."""
     if limit > 50:
@@ -842,6 +897,7 @@ def saved_albums(limit: int = 20):
     },
     tags=["podcasts"],
 )
+@cached_api_call(cache_key="saved_episodes_{limit}", ttl=14400)  # 4 hours
 def saved_episodes(limit: int = 20):
     """Return the user's saved podcast episodes."""
     if limit > 50:
@@ -901,6 +957,7 @@ def saved_episodes(limit: int = 20):
     },
     tags=["user"],
 )
+@cached_api_call(cache_key="wrapped_{period}", ttl=86400)  # 24 hours
 def spotify_wrapped(period: str = "long_term"):
     """Return Spotify Wrapped-style data for the specified time period."""
     valid_periods = ["short_term", "medium_term", "long_term"]
