@@ -11,6 +11,7 @@ from spotipy import Spotify
 from spotipy.oauth2 import SpotifyOAuth
 import os
 import json
+import time
 import redis
 
 # ---------------------
@@ -231,6 +232,41 @@ def get_spotify_client():
     return Spotify(auth=token)
 
 
+PLAYBACK_CACHE_KEY = "spotify_current_playback"
+PLAYBACK_LOCK_KEY = "spotify_current_playback_lock"
+PLAYBACK_CACHE_TTL = 2  # seconds
+
+
+def get_current_playback():
+    """Return Spotify playback state, cached in Redis so Spotify is hit at most
+    about once per PLAYBACK_CACHE_TTL regardless of how many clients poll."""
+    cached = r.get(PLAYBACK_CACHE_KEY)
+    if cached is not None:
+        return json.loads(cached)
+
+    sp = get_spotify_client()
+    if not sp:
+        raise HTTPException(status_code=401, detail="Spotify token not found")
+
+    # Only the request holding the lock refreshes; the others wait for the cache.
+    if not r.set(PLAYBACK_LOCK_KEY, "1", nx=True, ex=5):
+        for _ in range(10):
+            time.sleep(0.2)
+            cached = r.get(PLAYBACK_CACHE_KEY)
+            if cached is not None:
+                return json.loads(cached)
+
+    try:
+        results = sp.current_playback() or {}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
+    finally:
+        r.delete(PLAYBACK_LOCK_KEY)
+
+    r.set(PLAYBACK_CACHE_KEY, json.dumps(results), ex=PLAYBACK_CACHE_TTL)
+    return results
+
+
 def clean_track_data(track):
     """Clean track data by removing unnecessary fields like available_markets."""
     return {
@@ -332,13 +368,7 @@ def callback(request: Request):
 )
 def currently_playing():
     """Return a minimal representation of the currently playing track."""
-    sp = get_spotify_client()
-    if not sp:
-        raise HTTPException(status_code=401, detail="Spotify token not found")
-    try:
-        results = sp.current_playback()
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
+    results = get_current_playback()
 
     is_private = results.get("device", {}).get("is_private_session", False)
     if is_private:
@@ -372,13 +402,7 @@ def currently_playing():
 )
 def currently_playing_verbose():
     """Return a detailed representation of the currently playing track."""
-    sp = get_spotify_client()
-    if not sp:
-        raise HTTPException(status_code=401, detail="Spotify token not found")
-    try:
-        results = sp.current_playback()
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
+    results = get_current_playback()
 
     is_private = results.get("device", {}).get("is_private_session", False)
     if is_private:
