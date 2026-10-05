@@ -321,8 +321,8 @@ def clean_track_data(track):
 def cached_api_call(cache_key: str, ttl: int, lock_timeout: int = 5):
     """Decorator for caching API responses with Redis lock to prevent thundering herd.
     
-    Caches serialized response data and returns dicts instead of Pydantic models.
-    FastAPI will validate the dicts against the response model.
+    Returns full Pydantic models (not dicts) so FastAPI can properly serialize them.
+    Stores only the serialized response in Redis for caching purposes.
     
     Args:
         cache_key: Redis key for caching (can include {param_name} placeholders)
@@ -341,12 +341,13 @@ def cached_api_call(cache_key: str, ttl: int, lock_timeout: int = 5):
             
             lock_key = f"{actual_cache_key}_lock"
             
-            # Check cache and return dicts (FastAPI will validate)
+            # Check cache first
             cached = r.get(actual_cache_key)
             if cached is not None:
+                # Return cached data - it will be re-validated by FastAPI
                 return json.loads(cached)
             
-            # Try to acquire lock; if not, wait for cache to be populated
+            # Try to acquire lock; if not, wait for cache
             if not r.set(lock_key, "1", nx=True, ex=lock_timeout):
                 for _ in range(10):
                     time.sleep(0.2)
@@ -355,24 +356,32 @@ def cached_api_call(cache_key: str, ttl: int, lock_timeout: int = 5):
                         return json.loads(cached)
             
             try:
+                # Call the actual function to get fresh data
                 result = func(*args, **kwargs)
-                # Convert Pydantic models to dicts for caching
-                if isinstance(result, list):
-                    cacheable = [
-                        item.model_dump() if hasattr(item, 'model_dump') else item
-                        for item in result
-                    ]
-                elif hasattr(result, 'model_dump'):
-                    cacheable = result.model_dump()
-                else:
-                    cacheable = result
                 
-                # Cache and return the serialized form
-                cached_json = json.dumps(cacheable, default=str)
-                r.set(actual_cache_key, cached_json, ex=ttl)
+                # Serialize result to JSON for caching
+                try:
+                    # Convert each Pydantic model to dict
+                    if isinstance(result, list):
+                        serializable = [
+                            item.model_dump() if hasattr(item, 'model_dump') else item
+                            for item in result
+                        ]
+                    elif hasattr(result, 'model_dump'):
+                        serializable = result.model_dump()
+                    else:
+                        serializable = result
+                    
+                    # Store in Redis cache
+                    cached_json = json.dumps(serializable)
+                    r.set(actual_cache_key, cached_json, ex=ttl)
+                except Exception as e:
+                    # If caching fails, just skip it and return the result
+                    pass
                 
-                # Return dicts (FastAPI validates against response model)
-                return json.loads(cached_json)
+                # Always return the original result (Pydantic models)
+                return result
+                
             finally:
                 r.delete(lock_key)
         
