@@ -1,9 +1,10 @@
 # main.py
 from cryptography.fernet import Fernet
 import base64
+from datetime import datetime, timezone
 import requests
 from fastapi.responses import RedirectResponse
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi import HTTPException
@@ -372,7 +373,7 @@ def currently_playing():
 
     is_private = results.get("device", {}).get("is_private_session", False)
     if is_private:
-        return RedirectResponse(status_code=204, url="/currently-playing-verbose")
+        return Response(status_code=204)
 
     if results and results.get("item") and results.get("is_playing"):
         track = results["item"]
@@ -381,7 +382,7 @@ def currently_playing():
             "track": track["name"],
         }
     # Nothing playing
-    return RedirectResponse(status_code=204, url="/currently-playing")
+    return Response(status_code=204)
 
 
 @app.get(
@@ -406,7 +407,7 @@ def currently_playing_verbose():
 
     is_private = results.get("device", {}).get("is_private_session", False)
     if is_private:
-        return RedirectResponse(status_code=204, url="/currently-playing-verbose")
+        return Response(status_code=204)
 
     if results and results.get("item") and results.get("is_playing"):
         track = results["item"]
@@ -425,7 +426,7 @@ def currently_playing_verbose():
             "track_id": track_id,
         }
     # Nothing playing
-    return RedirectResponse(status_code=204, url="/currently-playing-verbose")
+    return Response(status_code=204)
 
 
 @app.get(
@@ -824,3 +825,35 @@ def spotify_wrapped(period: str = "long_term"):
 
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
+
+
+@app.get("/api/heartbeat")
+async def heartbeat():
+    try:
+        # get the previous heartbeat before overwriting it
+        last = r.get("last_heartbeat")
+        last_str = last if last else None
+
+        now = datetime.now(timezone.utc).isoformat()
+        r.set("last_heartbeat", now)  # no expiry — we want this to persist
+
+        return {
+            "status": "ok",
+            "message": "Redis is alive",
+            "current_heartbeat": now,
+            "previous_heartbeat": last_str,
+        }
+
+    except redis.exceptions.ConnectionError as e:
+        return {
+            "status": "error",
+            "message": "Could not connect to Redis",
+            "detail": str(e),
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": "Unexpected error during heartbeat",
+            "detail": str(e),
+        }
