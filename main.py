@@ -353,8 +353,13 @@ def cached_api_call(cache_key: str, ttl: int, lock_timeout: int = 5):
             
             try:
                 result = func(*args, **kwargs)
-                # Handle Pydantic models by converting to dict
-                if hasattr(result, 'model_dump'):
+                # Handle Pydantic models and other types by converting to dict/list
+                if isinstance(result, list):
+                    result = [
+                        item.model_dump() if hasattr(item, 'model_dump') else (item.dict() if hasattr(item, 'dict') else item)
+                        for item in result
+                    ]
+                elif hasattr(result, 'model_dump'):
                     result = result.model_dump()
                 elif hasattr(result, 'dict'):
                     result = result.dict()
@@ -755,19 +760,17 @@ def next_in_queue():
     # Get the first item in the queue (next track)
     queue_items = queue.get("queue", [])
     if not queue_items:
-        raise HTTPException(status_code=204, detail="Queue is empty")
+        return Response(status_code=204)
 
     next_track = queue_items[0]
     return QueueTrackInfo(
-        id=next_track["id"],
-        name=next_track["name"],
-        artists=[artist["name"] for artist in next_track["artists"]],
-        album=next_track["album"]["name"],
-        image_url=next_track["album"]["images"][0]["url"]
-        if next_track["album"].get("images")
-        else None,
-        spotify_url=next_track["external_urls"]["spotify"],
-        duration_ms=next_track["duration_ms"],
+        id=next_track.get("id"),
+        name=next_track.get("name"),
+        artists=[artist["name"] for artist in next_track.get("artists", [])],
+        album=next_track.get("album", {}).get("name", "Unknown"),
+        image_url=next_track.get("album", {}).get("images", [{}])[0].get("url") if next_track.get("album", {}).get("images") else None,
+        spotify_url=next_track.get("external_urls", {}).get("spotify"),
+        duration_ms=next_track.get("duration_ms"),
     )
 
 
@@ -806,15 +809,17 @@ def saved_shows(limit: int = 20):
 
     items = []
     for item in results.get("items", []):
-        show = item["show"]
+        show = item.get("show", {})
+        if not show:
+            continue
         items.append(
             PodcastShowInfo(
-                id=show["id"],
-                name=show["name"],
+                id=show.get("id"),
+                name=show.get("name", "Unknown"),
                 description=show.get("description"),
                 publisher=show.get("publisher", "Unknown"),
-                spotify_url=show["external_urls"]["spotify"],
-                image_url=show["images"][0]["url"] if show.get("images") else None,
+                spotify_url=show.get("external_urls", {}).get("spotify", ""),
+                image_url=show.get("images", [{}])[0].get("url") if show.get("images") else None,
                 total_episodes=show.get("total_episodes", 0),
                 is_externally_hosted=show.get("is_externally_hosted", False),
                 languages=show.get("languages", []),
@@ -859,20 +864,22 @@ def saved_albums(limit: int = 20):
 
     items = []
     for item in results.get("items", []):
-        album = item["album"]
+        album = item.get("album", {})
+        if not album:
+            continue
         items.append(
             AlbumInfo(
-                id=album["id"],
-                name=album["name"],
+                id=album.get("id"),
+                name=album.get("name", "Unknown"),
                 artists=[artist["name"] for artist in album.get("artists", [])],
                 artist_urls=[
-                    artist["external_urls"]["spotify"]
+                    artist.get("external_urls", {}).get("spotify", "")
                     for artist in album.get("artists", [])
                 ],
                 release_date=album.get("release_date"),
                 total_tracks=album.get("total_tracks", 0),
-                spotify_url=album["external_urls"]["spotify"],
-                image_url=album["images"][0]["url"] if album.get("images") else None,
+                spotify_url=album.get("external_urls", {}).get("spotify", ""),
+                image_url=album.get("images", [{}])[0].get("url") if album.get("images") else None,
             )
         )
 
@@ -914,7 +921,9 @@ def saved_episodes(limit: int = 20):
 
     items = []
     for item in results.get("items", []):
-        episode = item["episode"]
+        episode = item.get("episode", {})
+        if not episode:
+            continue
         # Get the show name if available
         show_name = "Unknown Show"
         if episode.get("show"):
@@ -922,15 +931,15 @@ def saved_episodes(limit: int = 20):
 
         items.append(
             EpisodeInfo(
-                id=episode["id"],
-                name=episode["name"],
+                id=episode.get("id"),
+                name=episode.get("name", "Unknown"),
                 show_name=show_name,
                 description=episode.get("description"),
                 release_date=episode.get("release_date"),
                 duration_ms=episode.get("duration_ms", 0),
                 explicit=episode.get("explicit", False),
-                spotify_url=episode["external_urls"]["spotify"],
-                image_url=episode["images"][0]["url"]
+                spotify_url=episode.get("external_urls", {}).get("spotify", ""),
+                image_url=episode.get("images", [{}])[0].get("url")
                 if episode.get("images")
                 else None,
                 audio_preview_url=episode.get("audio_preview_url"),
@@ -980,14 +989,14 @@ def spotify_wrapped(period: str = "long_term"):
         for artist in top_artists_response.get("items", []):
             top_artists.append(
                 ArtistInfo(
-                    id=artist["id"],
-                    name=artist["name"],
-                    uri=artist["uri"],
-                    spotify_url=artist["external_urls"]["spotify"],
-                    image_url=artist["images"][0]["url"]
+                    id=artist.get("id"),
+                    name=artist.get("name", "Unknown"),
+                    uri=artist.get("uri", ""),
+                    spotify_url=artist.get("external_urls", {}).get("spotify", ""),
+                    image_url=artist.get("images", [{}])[0].get("url")
                     if artist.get("images")
                     else None,
-                    followers=artist["followers"]["total"],
+                    followers=artist.get("followers", {}).get("total", 0),
                 )
             )
             # Collect genres from all artists
