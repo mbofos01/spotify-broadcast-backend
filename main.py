@@ -55,6 +55,7 @@ SCOPE = [
     "user-read-email",
     "user-read-private",
     "user-library-read",
+    "user-read-playback-position",
 ]
 
 sp_oauth = SpotifyOAuth(
@@ -152,6 +153,30 @@ class PodcastShowInfo(BaseModel):
     total_episodes: int
     is_externally_hosted: bool
     languages: list[str]
+
+
+class AlbumInfo(BaseModel):
+    id: str
+    name: str
+    artists: list[str]
+    artist_urls: list[str]
+    release_date: str
+    total_tracks: int
+    spotify_url: str
+    image_url: str | None
+
+
+class EpisodeInfo(BaseModel):
+    id: str
+    name: str
+    show_name: str
+    description: str | None
+    release_date: str
+    duration_ms: int
+    explicit: bool
+    spotify_url: str
+    image_url: str | None
+    audio_preview_url: str | None
 
 
 class WrappedData(BaseModel):
@@ -575,7 +600,9 @@ def recently_played(limit: int = 5):
                 id=track["id"],
                 name=track["name"],
                 artists=[artist["name"] for artist in track["artists"]],
-                artist_urls=[artist["external_urls"]["spotify"] for artist in track["artists"]],
+                artist_urls=[
+                    artist["external_urls"]["spotify"] for artist in track["artists"]
+                ],
                 album=track["album"]["name"],
                 image_url=track["album"]["images"][0]["url"]
                 if track["album"]["images"]
@@ -737,6 +764,120 @@ def saved_shows(limit: int = 20):
                 total_episodes=show.get("total_episodes", 0),
                 is_externally_hosted=show.get("is_externally_hosted", False),
                 languages=show.get("languages", []),
+            )
+        )
+
+    return items
+
+
+@app.get(
+    "/saved-albums",
+    response_model=list[AlbumInfo],
+    summary="Get user's saved albums",
+    description=(
+        "Returns the authenticated user's saved albums. "
+        "Uses Spotify's `current_user_saved_albums` endpoint with optional limit parameter."
+    ),
+    responses={
+        200: {
+            "description": "OK - list of saved albums",
+            "model": list[AlbumInfo],
+        },
+        401: {"model": ErrorResponse, "description": "Unauthorized - no token"},
+        502: {"model": ErrorResponse, "description": "Upstream Spotify error"},
+    },
+    tags=["albums"],
+)
+def saved_albums(limit: int = 20):
+    """Return the user's saved albums."""
+    if limit > 50:
+        limit = 50  # Spotify max
+
+    sp = get_spotify_client()
+    if not sp:
+        raise HTTPException(status_code=401, detail="Spotify token not found")
+
+    try:
+        results = sp.current_user_saved_albums(limit=limit)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
+
+    items = []
+    for item in results.get("items", []):
+        album = item["album"]
+        items.append(
+            AlbumInfo(
+                id=album["id"],
+                name=album["name"],
+                artists=[artist["name"] for artist in album.get("artists", [])],
+                artist_urls=[
+                    artist["external_urls"]["spotify"]
+                    for artist in album.get("artists", [])
+                ],
+                release_date=album.get("release_date"),
+                total_tracks=album.get("total_tracks", 0),
+                spotify_url=album["external_urls"]["spotify"],
+                image_url=album["images"][0]["url"] if album.get("images") else None,
+            )
+        )
+
+    return items
+
+
+@app.get(
+    "/saved-episodes",
+    response_model=list[EpisodeInfo],
+    summary="Get user's saved episodes",
+    description=(
+        "Returns the authenticated user's saved podcast episodes. "
+        "Uses Spotify's `current_user_saved_episodes` endpoint with optional limit parameter."
+    ),
+    responses={
+        200: {
+            "description": "OK - list of saved episodes",
+            "model": list[EpisodeInfo],
+        },
+        401: {"model": ErrorResponse, "description": "Unauthorized - no token"},
+        502: {"model": ErrorResponse, "description": "Upstream Spotify error"},
+    },
+    tags=["podcasts"],
+)
+def saved_episodes(limit: int = 20):
+    """Return the user's saved podcast episodes."""
+    if limit > 50:
+        limit = 50  # Spotify max
+
+    sp = get_spotify_client()
+    if not sp:
+        raise HTTPException(status_code=401, detail="Spotify token not found")
+
+    try:
+        results = sp.current_user_saved_episodes(limit=limit)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Spotify API error: {e}")
+
+    items = []
+    for item in results.get("items", []):
+        episode = item["episode"]
+        # Get the show name if available
+        show_name = "Unknown Show"
+        if episode.get("show"):
+            show_name = episode["show"].get("name", "Unknown Show")
+
+        items.append(
+            EpisodeInfo(
+                id=episode["id"],
+                name=episode["name"],
+                show_name=show_name,
+                description=episode.get("description"),
+                release_date=episode.get("release_date"),
+                duration_ms=episode.get("duration_ms", 0),
+                explicit=episode.get("explicit", False),
+                spotify_url=episode["external_urls"]["spotify"],
+                image_url=episode["images"][0]["url"]
+                if episode.get("images")
+                else None,
+                audio_preview_url=episode.get("audio_preview_url"),
             )
         )
 
