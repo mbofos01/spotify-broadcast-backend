@@ -113,6 +113,7 @@ class RecentlyPlayedTrack(BaseModel):
     id: str
     name: str
     artists: list[str]
+    artist_urls: list[str]
     album: str
     image_url: str | None
     spotify_url: str
@@ -574,6 +575,7 @@ def recently_played(limit: int = 5):
                 id=track["id"],
                 name=track["name"],
                 artists=[artist["name"] for artist in track["artists"]],
+                artist_urls=[artist["external_urls"]["spotify"] for artist in track["artists"]],
                 album=track["album"]["name"],
                 image_url=track["album"]["images"][0]["url"]
                 if track["album"]["images"]
